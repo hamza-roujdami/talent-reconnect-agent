@@ -36,9 +36,9 @@ def search_resumes(
         from openai import AzureOpenAI
         
         embeddings_client = AzureOpenAI(
-            api_key=os.getenv("AZURE_OPENAI_KEY", "d97f2e6f37244b87975682a45ba30798"),
+            api_key=os.getenv("AZURE_OPENAI_KEY"),
             api_version="2024-02-01",
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", "https://uaenorth.api.cognitive.microsoft.com/")
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
         )
         
         embedding_response = embeddings_client.embeddings.create(

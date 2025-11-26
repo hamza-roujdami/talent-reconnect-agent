@@ -27,14 +27,13 @@ from azure.search.documents.indexes.models import (
 
 
 # Azure Search configuration
-SEARCH_SERVICE_NAME = "talent-search-44665"
-SEARCH_ENDPOINT = f"https://{SEARCH_SERVICE_NAME}.search.windows.net"
-SEARCH_ADMIN_KEY = "vod2KJA2xKMO0uLjtHC8WNlYJQJVHnJJkl0orBhO7sAzSeCC4R3K"
-INDEX_NAME = "resumes"
+SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT")
+SEARCH_ADMIN_KEY = os.getenv("AZURE_SEARCH_KEY")
+INDEX_NAME = os.getenv("AZURE_SEARCH_INDEX", "resumes")
 
 # Azure OpenAI configuration for embeddings
-AZURE_OPENAI_ENDPOINT = "https://uaenorth.api.cognitive.microsoft.com/"
-AZURE_OPENAI_KEY = "d97f2e6f37244b87975682a45ba30798"
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
 

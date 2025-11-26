@@ -1,0 +1,98 @@
+[
+  {
+    "id": "1",
+    "name": "Sarah Chen",
+    "email": "sarah.chen@internal.com",
+    "title": "Senior ML Engineer",
+    "experience_years": 8,
+    "location": "San Francisco, CA",
+    "skills": ["Python", "Machine Learning", "TensorFlow", "Azure ML", "MLOps", "Docker", "Kubernetes", "SQL", "Leadership", "Data Engineering"],
+    "summary": "Seasoned ML Engineer with 8 years of experience building production ML systems. Led team of 5 engineers at TechCorp Solutions implementing Azure ML platform. Expert in MLOps, CI/CD for ML models, and scalable data pipelines.",
+    "current_company": "TechCorp Solutions",
+    "availability": "open"
+  },
+  {
+    "id": "2",
+    "name": "Marcus Johnson",
+    "email": "marcus.j@internal.com",
+    "title": "Data Scientist",
+    "experience_years": 6,
+    "location": "Seattle, WA",
+    "skills": ["Python", "R", "Machine Learning", "Statistics", "Azure", "SQL", "Data Visualization", "A/B Testing", "Scikit-learn", "Pandas"],
+    "summary": "Data Scientist specializing in predictive analytics and experimentation. 6 years experience in e-commerce and tech. Strong statistical background with focus on causal inference and business impact measurement.",
+    "current_company": "Amazon",
+    "availability": "passive"
+  },
+  {
+    "id": "3",
+    "name": "Priya Sharma",
+    "email": "priya.sharma@internal.com",
+    "title": "AI Research Engineer",
+    "experience_years": 5,
+    "location": "Austin, TX",
+    "skills": ["PyTorch", "NLP", "Azure", "Deep Learning", "Transformers", "Python", "Docker", "MLOps", "Team Collaboration", "Research"],
+    "summary": "AI Research Engineer with 5 years focusing on NLP and large language models. Published 3 papers at top conferences. Experience deploying research prototypes to production at DataFlow Analytics.",
+    "current_company": "DataFlow Analytics",
+    "availability": "open"
+  },
+  {
+    "id": "4",
+    "name": "James Williams",
+    "email": "james.w@internal.com",
+    "title": "Cloud Solutions Architect",
+    "experience_years": 10,
+    "location": "New York, NY",
+    "skills": ["Azure", "AWS", "Cloud Architecture", "Terraform", "Kubernetes", "DevOps", "CI/CD", "Python", "Leadership", "Agile"],
+    "summary": "Senior Cloud Architect with 10 years experience designing and implementing large-scale cloud solutions. Azure certified expert. Led migration of 50+ applications to cloud with zero downtime.",
+    "current_company": "Microsoft",
+    "availability": "passive"
+  },
+  {
+    "id": "5",
+    "name": "Emily Rodriguez",
+    "email": "emily.r@internal.com",
+    "title": "Full Stack ML Engineer",
+    "experience_years": 7,
+    "location": "Remote",
+    "skills": ["Python", "JavaScript", "React", "FastAPI", "Machine Learning", "Azure", "Docker", "PostgreSQL", "Team Collaboration", "Agile"],
+    "summary": "Full stack engineer specializing in ML-powered applications. 7 years building end-to-end ML products from model training to production APIs. Strong product sense and user-centric design approach.",
+    "current_company": "Stripe",
+    "availability": "open"
+  },
+  {
+    "id": "6",
+    "name": "David Kim",
+    "email": "david.k@internal.com",
+    "title": "Data Engineering Lead",
+    "experience_years": 9,
+    "location": "Los Angeles, CA",
+    "skills": ["Python", "Spark", "Azure Data Factory", "SQL", "Airflow", "Kafka", "Data Modeling", "Leadership", "ETL", "Big Data"],
+    "summary": "Data Engineering Lead with 9 years building scalable data platforms. Led team of 8 engineers building real-time data pipelines processing 100TB+ daily. Expert in Azure data ecosystem.",
+    "current_company": "Netflix",
+    "availability": "passive"
+  },
+  {
+    "id": "7",
+    "name": "Lisa Anderson",
+    "email": "lisa.a@internal.com",
+    "title": "Senior Data Scientist",
+    "experience_years": 6,
+    "location": "Boston, MA",
+    "skills": ["Python", "Machine Learning", "Deep Learning", "Azure ML", "Computer Vision", "TensorFlow", "PyTorch", "SQL", "Communication", "Problem Solving"],
+    "summary": "Data Scientist with 6 years in healthcare and finance verticals. Specialized in computer vision and anomaly detection. Strong communication skills with track record of translating complex ML concepts to stakeholders.",
+    "current_company": "CVS Health",
+    "availability": "open"
+  },
+  {
+    "id": "8",
+    "name": "Michael Chen",
+    "email": "michael.c@internal.com",
+    "title": "MLOps Engineer",
+    "experience_years": 5,
+    "location": "San Francisco, CA",
+    "skills": ["Python", "Kubernetes", "Docker", "MLOps", "Azure ML", "CI/CD", "Monitoring", "Terraform", "Git", "Linux"],
+    "summary": "MLOps Engineer with 5 years automating ML model deployment and monitoring. Built platform serving 200+ models in production. Expert in Kubernetes, Azure ML, and ML observability tools.",
+    "current_company": "Uber",
+    "availability": "open"
+  }
+]

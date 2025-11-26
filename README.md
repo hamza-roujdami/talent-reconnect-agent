@@ -1,10 +1,45 @@
 # Talent Reconnect Agent
 
 > **⚠️ Demo Purpose Only**  
-> This is a **proof-of-concept demonstration** showcasing AI-powered talent acquisition with Microsoft Agent Framework and Microsoft Foundry. It is **not production-ready code** and uses mock data for testing purposes. For production deployment, replace mock implementations with real integrations, add proper error handling, security measures, compliance checks, and scalability considerations.
+> This is a **proof-of-concept demonstration** showcasing AI-powered talent acquisition with Microsoft Agent Framework and Microsoft Foundry. It is **not production-ready code** and uses mock data for testing purposes. 
 
-AI-powered multi-agent system for **Talent Acquisition** that reconnects qualified internal candidates with new opportunities using **Microsoft Agent Framework** and **Azure Foundry**.
+AI-powered multi-agent system for **Talent Acquisition** that reconnects qualified internal candidates with new opportunities using **Microsoft Agent Framework** and **Microsoft Foundry**.
 
+## Architecture
+```
+Job Request → Orchestrator Agent (LLM-powered sequential router)
+                    ↓
+            ┌───────┴───────┐
+            │ Classifier LLM │ 
+            └───────┬───────┘
+                    ↓
+        SEQUENTIAL WORKFLOW (6 steps):
+                    ↓
+        1. Skills Mapping Agent
+           ├─ Tool: extract_skills_from_job()
+           └─ LLM extracts 10 canonical skills
+                    ↓
+        2. Resume Sourcing Agent
+           ├─ Tool: search_resumes()
+           ├─ Azure AI Search (hybrid: keyword + vector)
+           └─ Returns top 10 matching candidates
+                    ↓
+        3. Historical Feedback Agent
+           ├─ Tool: filter_by_feedback()
+           └─ Filters based on ATS/CRM history
+                    ↓
+        4. Profile Enrichment Agent
+           ├─ Tool: enrich_profile()
+           └─ Adds current employment data
+                    ↓
+        5. TA Approval Agent (HITL)
+           ├─ Tool: simulate_ta_approval()
+           └─ LLM simulates human review
+                    ↓
+        6. Outreach Agent
+           ├─ Tool: generate_outreach_message()
+           └─ LLM generates personalized messages
+```
 ## Use Case
 
 The Talent Reconnect Agent automates the talent sourcing workflow:
@@ -17,167 +52,148 @@ The Talent Reconnect Agent automates the talent sourcing workflow:
 6. **Human-in-the-Loop**: TA manager reviews and approves candidates
 7. **Outreach**: Sends personalized messages to approved candidates and logs to ATS/CRM
 
-## Architecture
+## Technical Implementation
 
-```
-Job Request → Supervisor Agent (Orchestration)
-                    ↓
-        ┌───────────┴───────────────────────┐
-        ↓                                   ↓
-   Skills Mapping Agent              Candidate Search Agent
-   (Job → Skills)                    (Azure AI Search)
-                    ↓
-            Enrichment Agent
-            (Profile API + ATS/CRM feedback)
-                    ↓
-            Approval Agent
-            (Human-in-the-Loop)
-                    ↓
-            Outreach Agent
-            (Messaging + ATS/CRM logging)
-```
+### Tech Stack
+- **Framework**: Microsoft Agent Framework (ChatAgent + OpenAIChatClient)
+- **LLM**: Microsoft Foundry Models (gpt-4o-mini-deployment) with DefaultAzureCredential
+- **Search**: Azure AI Search with hybrid search (keyword + vector + semantic)
+- **Embeddings**: Azure OpenAI text-embedding-ada-002 (1536 dimensions)
+- **Vector Algorithm**: HNSW with cosine similarity
+- **UI**: Gradio web interface
+- **Language**: Python 3.10+ with asyncio
 
-**Agents (To Be Implemented):**
-- **Supervisor**: Orchestrates the sequential workflow
-- **Skills Mapping Agent**: Analyzes job description and extracts canonical skills
-- **Candidate Search Agent**: Queries Azure AI Search for matching CVs
-- **Enrichment Agent**: Adds current employment data and historical feedback
-- **Approval Agent**: HITL workflow for TA manager review
-- **Outreach Agent**: Sends messages and logs to ATS/CRM
+### Orchestration Patterns
 
-## Orchestration Patterns
-
-### Sequential Workflow (Primary Pattern)
+#### Sequential Workflow 
 The talent acquisition process follows a strict sequential flow:
 ```
-Job Analysis → Skills Mapping → Search → Enrichment → Approval → Outreach
+Job Analysis → Skills Mapping → Resume Sourcing → Historical Feedback 
+    → Profile Enrichment → TA Approval → Outreach
 ```
 
-Each step must complete before the next begins, ensuring data quality and compliance.
+#### Hybrid Search Architecture
+Resume Sourcing uses 3-layer search:
+1. **Keyword Search**: Traditional full-text search on skills, title, summary
+2. **Vector Search**: Semantic similarity using 1536-dim embeddings (HNSW algorithm)
+3. **Semantic Ranking**: Azure's L2 semantic ranker for better relevance
 
-### Human-in-the-Loop (HITL)
-The approval step requires explicit human decision-making:
-- TA manager reviews enriched candidate profiles
-- Approves/rejects each candidate
-- Provides feedback for future improvements
-- System waits for approval before proceeding to outreach
-
-## Setup
+Query flow:
+```
+Skills → Generate Query Embedding → Hybrid Search (keyword + vector) 
+    → Apply Filters (location, experience) → Semantic Ranking → Top 10 Results
+```
+## Quick Start
 
 ### Prerequisites
-- Python 3.10+
-- Azure CLI (`az login`)
-- Azure Foundry with model deployment
-- Azure AI Search instance (for CV search)
-- Azure Blob Storage (for CV storage)
-- ATS/CRM API credentials (for feedback and logging)
-- Profile enrichment API credentials (compliant data source)
 
-### Installation
+**Required:**
+- Python 3.10 or higher
+- Azure CLI installed and authenticated (`az login`)
+- Azure Foundry project with GPT-4o-mini deployment
+- Azure AI Search instance with Standard tier (for hybrid search)
+
+**For Demo:**
+- Mock data is included for historical feedback and profile enrichment
+- Sample resumes provided in `data/sample_resumes.json`
+
+**For Production:**
+- ATS/CRM API integration (currently mocked)
+- Compliant profile enrichment API (currently mocked)
+- Real HITL dashboard (currently LLM-simulated)
+
+### 1. Install Dependencies
 
 ```bash
-# Create virtual environment
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt --pre
-
-# Configure .env file (see .env.example)
-cp .env.example .env
-# Edit .env with your Azure services credentials
 ```
 
-### Required Environment Variables
+### 2. Configure Environment
 
 ```bash
-# Azure Foundry
-AZURE_OPENAI_ENDPOINT=https://your-foundry-endpoint.services.ai.azure.com/models
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o-mini-deployment
-
-# Azure AI Search
-AZURE_SEARCH_ENDPOINT=https://your-search.search.windows.net
-AZURE_SEARCH_INDEX_NAME=resumes-index
-
-# Azure Blob Storage
-AZURE_STORAGE_CONNECTION_STRING=your-connection-string
-AZURE_STORAGE_CONTAINER_NAME=resumes
-
-# ATS/CRM API (mock for demo)
-ATS_API_ENDPOINT=https://your-ats-api.com
-ATS_API_KEY=your-api-key
-
-# Profile Enrichment API (mock for demo)
-ENRICHMENT_API_ENDPOINT=https://your-enrichment-api.com
-ENRICHMENT_API_KEY=your-api-key
+cp .env.example .env
+# Edit .env with your Azure credentials
 ```
 
-## Features
+**Core Configuration (Required):**
 
-### 🎯 Skills Mapping
-- Canonical skills taxonomy (standardized skill names)
-- LLM-powered extraction from job descriptions
-- ~10 most relevant skills per role
-- Handles ambiguous or non-standard job titles
+```bash
+# Azure Foundry Configuration (for LLM agents)
+OPENAI_API_BASE=https://your-project.services.ai.azure.com/models
+OPENAI_MODEL_NAME=gpt-4o-mini-deployment
 
-### 🔍 Intelligent Search
-- Azure AI Search with semantic ranking
-- Vector embeddings for CV similarity
-- Filters: location, availability, experience level
-- Historical feedback weighting
+# Azure AI Search (for resume database)
+AZURE_SEARCH_ENDPOINT=https://your-search.search.windows.net
+AZURE_SEARCH_KEY=your-search-admin-key
+AZURE_SEARCH_INDEX=resumes
+```
 
-### 📊 Profile Enrichment
-- Current employment status (via compliant API)
-- Company information and tenure
-- Previous interaction history (ATS/CRM)
-- Rejection reasons and feedback notes
+The `data/setup_search.py` script includes hardcoded embedding configuration. For production, configure these via environment variables.
 
-### ✅ Human-in-the-Loop
-- TA manager dashboard for candidate review
-- Approve/reject with reasoning
-- Batch approval support
-- Audit trail of decisions
+### 3. Set Up Azure AI Search (One-time)
 
-### 📧 Automated Outreach
-- Personalized messaging templates
-- Multi-channel support (email, LinkedIn, SMS)
-- ATS/CRM integration for activity logging
-- Compliance checks (GDPR, opt-out preferences)
+**Important:** Update `data/setup_search.py` with your Azure Search credentials before running.
 
-## Development Roadmap
+```bash
+# Create search index and upload sample resumes with embeddings
+python data/setup_search.py
+```
 
-- [ ] Set up Azure AI Search index for resumes
-- [ ] Implement Skills Mapping Agent
-- [ ] Implement Candidate Search Agent with Azure AI Search
-- [ ] Build Enrichment Agent with ATS/CRM integration
-- [ ] Create HITL Approval Agent workflow
-- [ ] Develop Outreach Agent with messaging and logging
-- [ ] Build Supervisor Agent for orchestration
-- [ ] Create Gradio web UI for TA managers
-- [ ] Add observability and tracing
-- [ ] Production deployment guide
+This script will:
+- Create a search index with 1536-dimension vector field (HNSW algorithm)
+- Generate embeddings for 8 sample resumes using Azure OpenAI
+- Upload documents to Azure AI Search
+- Configure hybrid search capabilities (keyword + vector + semantic ranking)
 
-## Compliance & Ethics
+**Note:** The script currently contains hardcoded credentials for demo purposes. Replace with environment variables for production use.
 
-⚠️ **Important Considerations:**
-- **GDPR Compliance**: Ensure consent for candidate data processing
-- **Data Retention**: Follow organizational policies for CV storage
-- **Bias Prevention**: Regular audits of AI recommendations
-- **Opt-Out Respect**: Honor candidate communication preferences
-- **Transparency**: Clear communication about AI usage in recruitment
-- **Data Security**: Encrypt sensitive candidate information
+### 4. Run the Application
+
+```bash
+# Start Gradio web interface
+python app.py
+
+# Or test the orchestrator directly
+python agents/orchestrator_agent.py
+```
+
+Open http://localhost:7861 in your browser.
+
+### 5. Try the Demo Workflow
+
+Paste this into the UI:
+
+```
+I need to find candidates for a Senior Machine Learning Engineer role.
+
+Job Requirements:
+- 5+ years experience in Python and machine learning
+- Hands-on experience with Azure ML and MLOps practices
+- Strong leadership and team collaboration skills
+- Proven track record building production ML systems
+- Experience with cloud platforms (Azure preferred)
+
+Company: TechCorp Solutions
+Location: Remote or San Francisco Bay Area
+```
+Continue with "continue" or "next step" to progress through the 6-step workflow.
 
 ## Resources
 
-- [Microsoft Agent Framework Documentation](https://learn.microsoft.com/agent-framework/overview/agent-framework-overview)
+**Microsoft Agent Framework:**
+- [Official Documentation](https://learn.microsoft.com/agent-framework/overview/agent-framework-overview)
+- [GitHub Repository](https://github.com/microsoft/agent-framework)
+- [HITL Patterns & Examples](https://github.com/microsoft/agent-framework/tree/main/dotnet/samples/AzureFunctions/05_AgentOrchestration_HITL)
+
+**Azure AI Services:**
 - [Azure AI Search Documentation](https://learn.microsoft.com/azure/search/)
+- [Hybrid Search Overview](https://learn.microsoft.com/azure/search/hybrid-search-overview)
+- [Vector Search Guide](https://learn.microsoft.com/azure/search/vector-search-overview)
 - [Azure OpenAI Service](https://learn.microsoft.com/azure/ai-services/openai/)
-- [Human-in-the-Loop Patterns](https://github.com/microsoft/agent-framework/tree/main/dotnet/samples/AzureFunctions/05_AgentOrchestration_HITL)
+- [Azure Foundry (AI Studio)](https://learn.microsoft.com/azure/ai-studio/)
 
-## .NET Implementation
-
-For customers coding in .NET, see [dotnet.md](dotnet.md) for equivalent patterns and samples from the Microsoft Agent Framework.
-
-## License
-
-Demo project for educational purposes.
+**Related Projects:**
+- [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Alternative agent orchestration framework
+- [Prompt Flow](https://microsoft.github.io/promptflow/) - LLM application development toolkit

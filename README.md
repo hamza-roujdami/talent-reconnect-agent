@@ -1,199 +1,155 @@
-# Talent Reconnect Agent
+# 🎯 Talent Reconnect Agent
 
-> **⚠️ Demo Purpose Only**  
-> This is a **proof-of-concept demonstration** showcasing AI-powered talent acquisition with Microsoft Agent Framework and Microsoft Foundry. It is **not production-ready code** and uses mock data for testing purposes. 
+**Human-in-the-Loop AI workflow** for talent acquisition using Microsoft Agent Framework and Azure OpenAI.
 
-AI-powered multi-agent system for **Talent Acquisition** that reconnects qualified internal candidates with new opportunities using **Microsoft Agent Framework** and **Microsoft Foundry**.
+> **Demo Project** - Showcases interactive multi-agent orchestration with HITL approval patterns. Not production-ready.
 
-## Architecture
+## ✨ What It Does
+
+Automates talent sourcing with **HR approval at every step**:
+
+1. **Skills Mapping** → Extract key skills from job description
+2. **Resume Search** → Find candidates via Azure AI Search (hybrid keyword + vector)
+3. **History Filter** → Remove recently contacted candidates
+4. **Profile Enrichment** → Add current employment data
+5. **TA Review** → Present candidates for approval
+6. **Outreach** → Generate personalized messages
+
+**Each step pauses for human approval before continuing.**
+
+## 🏗️ Architecture
+
 ```
-Job Request → Orchestrator Agent (LLM-powered sequential router)
-                    ↓
-            ┌───────┴───────┐
-            │ Classifier LLM │ 
-            └───────┬───────┘
-                    ↓
-        SEQUENTIAL WORKFLOW (6 steps):
-                    ↓
-        1. Skills Mapping Agent
-           ├─ Tool: extract_skills_from_job()
-           └─ LLM extracts 10 canonical skills
-                    ↓
-        2. Resume Sourcing Agent
-           ├─ Tool: search_resumes()
-           ├─ Azure AI Search (hybrid: keyword + vector)
-           └─ Returns top 10 matching candidates
-                    ↓
-        3. Historical Feedback Agent
-           ├─ Tool: filter_by_feedback()
-           └─ Filters based on ATS/CRM history
-                    ↓
-        4. Profile Enrichment Agent
-           ├─ Tool: enrich_profile()
-           └─ Adds current employment data
-                    ↓
-        5. TA Approval Agent (HITL)
-           ├─ Tool: simulate_ta_approval()
-           └─ LLM simulates human review
-                    ↓
-        6. Outreach Agent
-           ├─ Tool: generate_outreach_message()
-           └─ LLM generates personalized messages
-```
-## Use Case
-
-The Talent Reconnect Agent automates the talent sourcing workflow:
-
-1. **Job Analysis**: Takes a job title + description
-2. **Skills Mapping**: Maps the role to ~10 canonical skills
-3. **Candidate Search**: Searches internal resumes using Azure AI Search over Blob-stored CVs
-4. **Historical Filtering**: Applies historical feedback from ATS/CRM (previous rejections, preferences)
-5. **Profile Enrichment**: Enriches candidates with current job/company via compliant profile enrichment API
-6. **Human-in-the-Loop**: TA manager reviews and approves candidates
-7. **Outreach**: Sends personalized messages to approved candidates and logs to ATS/CRM
-
-## Technical Implementation
-
-### Tech Stack
-- **Framework**: Microsoft Agent Framework (ChatAgent + OpenAIChatClient)
-- **LLM**: Microsoft Foundry Models (gpt-4o-mini-deployment) with DefaultAzureCredential
-- **Search**: Azure AI Search with hybrid search (keyword + vector + semantic)
-- **Embeddings**: Azure OpenAI text-embedding-ada-002 (1536 dimensions)
-- **Vector Algorithm**: HNSW with cosine similarity
-- **UI**: Gradio web interface
-- **Language**: Python 3.10+ with asyncio
-
-### Orchestration Patterns
-
-#### Sequential Workflow 
-The talent acquisition process follows a strict sequential flow:
-```
-Job Analysis → Skills Mapping → Resume Sourcing → Historical Feedback 
-    → Profile Enrichment → TA Approval → Outreach
+                 TurnManager Executor
+                         ↓
+    ┌────────────────────┴────────────────────┐
+    │                                         │
+Agent 1 → [PAUSE] → HR Approval → Agent 2 → [PAUSE] → HR Approval → ...
+    │                                         │
+    └──────── ctx.request_info() ────────────┘
 ```
 
-#### Hybrid Search Architecture
-Resume Sourcing uses 3-layer search:
-1. **Keyword Search**: Traditional full-text search on skills, title, summary
-2. **Vector Search**: Semantic similarity using 1536-dim embeddings (HNSW algorithm)
-3. **Semantic Ranking**: Azure's L2 semantic ranker for better relevance
+**Tech Stack:**
+- **Framework:** Microsoft Agent Framework with WorkflowBuilder
+- **Pattern:** TurnManager Executor (`@handler` + `@response_handler`)
+- **LLM:** Azure OpenAI GPT-4o-mini
+- **Search:** Azure AI Search (HNSW vector + semantic ranking)
+- **Auth:** DefaultAzureCredential
 
-Query flow:
+## 🔧 How It Works
+
+**Supervisor Built with MAF WorkflowBuilder:**
+
+```python
+# Create 6 ChatAgents
+agents = [
+    ("Skills Mapping", create_skill_mapping_agent(chat_client)),
+    ("Resume Sourcing", create_resume_sourcing_agent(chat_client)),
+    ("Historical Feedback", create_historical_feedback_agent(chat_client)),
+    ("Profile Enrichment", create_profile_enricher_agent(chat_client)),
+    ("TA Approval", create_ta_approval_agent(chat_client)),
+    ("Outreach", create_outreach_agent(chat_client))
+]
+
+# TurnManager orchestrates all 6 agents with HITL
+turn_manager = TurnManager(agents=agents)
+workflow = WorkflowBuilder().set_start_executor(turn_manager).build()
 ```
-Skills → Generate Query Embedding → Hybrid Search (keyword + vector) 
-    → Apply Filters (location, experience) → Semantic Ranking → Top 10 Results
+
+**HITL Pattern:**
+
+```python
+class TurnManager(Executor):
+    @handler
+    async def start(self, job_request: str, ctx: WorkflowContext):
+        result = await self.agents[0].run(job_request)  # Run first agent
+        await ctx.request_info(approval_request, response_type=str)  # Pause
+    
+    @response_handler
+    async def on_approval(self, original_request, user_input, ctx):
+        self.current_step += 1
+        if self.current_step < len(self.agents):
+            result = await self.agents[self.current_step].run(prev_result.text)
+            await ctx.request_info(...)  # Pause again
+        else:
+            await ctx.yield_output(final_result)  # Complete
 ```
-## Quick Start
 
-### Prerequisites
+**Flow:** `workflow.run()` → agent 1 → `ctx.request_info()` → **[PAUSE]** → `send_responses()` → `@response_handler` → agent 2 → repeat
+## 🚀 Quick Start
 
-**Required:**
-- Python 3.10 or higher
-- Azure CLI installed and authenticated (`az login`)
-- Azure Foundry project with GPT-4o-mini deployment
-- Azure AI Search instance with Standard tier (for hybrid search)
-
-**For Demo:**
-- Mock data is included for historical feedback and profile enrichment
-- Sample resumes provided in `data/sample_resumes.json`
-
-**For Production:**
-- ATS/CRM API integration (currently mocked)
-- Compliant profile enrichment API (currently mocked)
-- Real HITL dashboard (currently LLM-simulated)
-
-### 1. Install Dependencies
+### 1. Setup
 
 ```bash
+# Install dependencies
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt --pre
-```
 
-### 2. Configure Environment
-
-```bash
+# Configure environment
 cp .env.example .env
 # Edit .env with your Azure credentials
 ```
 
-**Core Configuration (Required):**
+### 2. Configure `.env`
 
 ```bash
-# Azure Foundry Configuration (for LLM agents)
-OPENAI_API_BASE=https://your-project.services.ai.azure.com/models
-OPENAI_MODEL_NAME=gpt-4o-mini-deployment
+# Azure OpenAI
+AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o-mini
+AZURE_OPENAI_API_VERSION=2024-08-01-preview
 
-# Azure AI Search (for resume database)
+# Azure AI Search
 AZURE_SEARCH_ENDPOINT=https://your-search.search.windows.net
-AZURE_SEARCH_KEY=your-search-admin-key
+AZURE_SEARCH_KEY=your-key
 AZURE_SEARCH_INDEX=resumes
 ```
 
-The `data/setup_search.py` script includes hardcoded embedding configuration. For production, configure these via environment variables.
+**Authentication:** Login with `az login` for DefaultAzureCredential.
 
-### 3. Set Up Azure AI Search (One-time)
-
-**Important:** Update `data/setup_search.py` with your Azure Search credentials before running.
+### 3. Setup Azure AI Search (one-time)
 
 ```bash
-# Create search index and upload sample resumes with embeddings
-python data/setup_search.py
+python data/setup_search.py  # Creates index + uploads sample resumes
 ```
 
-This script will:
-- Create a search index with 1536-dimension vector field (HNSW algorithm)
-- Generate embeddings for 8 sample resumes using Azure OpenAI
-- Upload documents to Azure AI Search
-- Configure hybrid search capabilities (keyword + vector + semantic ranking)
-
-**Note:** The script currently contains hardcoded credentials for demo purposes. Replace with environment variables for production use.
-
-### 4. Run the Application
+### 4. Run
 
 ```bash
-# Start Gradio web interface
-python app.py
-
-# Or test the orchestrator directly
-python agents/orchestrator_agent.py
+python talent-reconnect-agent.py
 ```
 
-Open http://localhost:7861 in your browser.
+**Usage:**
+1. Enter job description (or press Enter for default)
+2. Review Step 1 output → Type `continue` → Next step
+3. Repeat for all 6 steps
+4. At final step → Type `email` or `message`
 
-### 5. Try the Demo Workflow
-
-Paste this into the UI:
+## 📁 Project Structure
 
 ```
-I need to find candidates for a Senior Machine Learning Engineer role.
-
-Job Requirements:
-- 5+ years experience in Python and machine learning
-- Hands-on experience with Azure ML and MLOps practices
-- Strong leadership and team collaboration skills
-- Proven track record building production ML systems
-- Experience with cloud platforms (Azure preferred)
-
-Company: TechCorp Solutions
-Location: Remote or San Francisco Bay Area
+talent-reconnect-agent/
+├── talent-reconnect-agent.py       # Main interactive workflow
+├── agents/
+│   ├── supervisor.py               # TurnManager orchestrator
+│   ├── skill_mapping_agent.py      # Extract skills
+│   ├── resume_sourcing_agent.py    # Search candidates
+│   ├── historical_feedback_agent.py # Filter by history
+│   ├── profile_enricher_agent.py   # Enrich profiles
+│   ├── ta_approval_hitl_agent.py   # Review candidates
+│   └── outreach_agent.py           # Generate messages
+└── data/
+    ├── sample_resumes.json         # Mock data
+    └── setup_search.py             # Index setup
 ```
-Continue with "continue" or "next step" to progress through the 6-step workflow.
 
-## Resources
+## 📚 Resources
 
-**Microsoft Agent Framework:**
-- [Official Documentation](https://learn.microsoft.com/agent-framework/overview/agent-framework-overview)
-- [GitHub Repository](https://github.com/microsoft/agent-framework)
-- [HITL Patterns & Examples](https://github.com/microsoft/agent-framework/tree/main/dotnet/samples/AzureFunctions/05_AgentOrchestration_HITL)
+**Microsoft Agent Framework:** [Docs](https://learn.microsoft.com/agent-framework) | [HITL Examples](https://github.com/microsoft/agent-framework/tree/main/python/samples/learn/workflows/human-in-the-loop)
 
-**Azure AI Services:**
-- [Azure AI Search Documentation](https://learn.microsoft.com/azure/search/)
-- [Hybrid Search Overview](https://learn.microsoft.com/azure/search/hybrid-search-overview)
-- [Vector Search Guide](https://learn.microsoft.com/azure/search/vector-search-overview)
-- [Azure OpenAI Service](https://learn.microsoft.com/azure/ai-services/openai/)
-- [Azure Foundry (AI Studio)](https://learn.microsoft.com/azure/ai-studio/)
+**Azure:** [AI Search](https://learn.microsoft.com/azure/search/) | [OpenAI](https://learn.microsoft.com/azure/ai-services/openai/)
 
-**Related Projects:**
-- [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Alternative agent orchestration framework
-- [Prompt Flow](https://microsoft.github.io/promptflow/) - LLM application development toolkit
+---
+
+*Demo project for educational purposes only.*
+

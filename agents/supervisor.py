@@ -93,11 +93,6 @@ class TurnManager(Executor):
         # Store result
         self.step_results.append(result)
         
-        # Show output
-        print(f"\n✅ {step_name} complete\n{'-'*60}")
-        print(result.text)
-        print(f"{'-'*60}\n")
-        
         # Request approval (except for last step)
         if step_num < 6:
             approval_request = StepApprovalRequest(

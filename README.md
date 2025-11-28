@@ -120,11 +120,36 @@ python data/setup_search.py  # Creates index + uploads sample resumes
 python talent-reconnect-agent.py
 ```
 
-**Usage:**
-1. Enter job description (or press Enter for default)
-2. Review Step 1 output → Type `continue` → Next step
-3. Repeat for all 6 steps
-4. At final step → Type `email` or `message`
+## 💡 Example Prompt
+
+When prompted for a job description, use a detailed request like this:
+
+```
+We are looking for a Senior Machine Learning Engineer to join TechCorp Solutions.
+
+Requirements:
+- 5+ years of experience in Python and machine learning
+- Hands-on experience with Azure ML, MLOps, and cloud platforms
+- Strong leadership and team collaboration skills
+- Experience building production ML systems
+- Background in data engineering is a plus
+
+Location: Remote or San Francisco Bay Area
+Team: AI Platform Team
+```
+
+**What happens:**
+1. **Skills Mapping** extracts: Python, Machine Learning, Azure ML, MLOps, Leadership, etc.
+2. **Resume Sourcing** searches Azure AI Search for matching candidates
+3. **Historical Feedback** filters out recently contacted candidates
+4. **Profile Enrichment** adds current job/company info
+5. **TA Approval** presents shortlist for review
+6. **Outreach** generates personalized recruitment messages
+
+**Approval Flow:**
+- After each step, type `continue` to proceed
+- Or type feedback/adjustments if needed
+- At final step, type `email` or `message` to confirm outreach method
 
 ## 📁 Project Structure
 

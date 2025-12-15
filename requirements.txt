@@ -14,6 +14,12 @@ openai>=1.50.0
 
 # Azure AI Search (for resume sourcing with hybrid search)
 azure-search-documents>=11.6.0
+aiohttp>=3.9.0
 
-# Web UI
-gradio>=5.0.0
+# Web Framework (API mode)
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Web UI (Chainlit - optional)
+chainlit>=1.0.0
+plotly>=5.0.0

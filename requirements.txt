@@ -23,3 +23,6 @@ uvicorn[standard]>=0.32.0
 # Web UI (Chainlit - optional)
 chainlit>=1.0.0
 plotly>=5.0.0
+# Data Generation (for synthetic resumes)
+faker>=18.0.0
+pandas>=2.0.0

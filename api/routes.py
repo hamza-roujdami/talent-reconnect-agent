@@ -24,6 +24,10 @@ from config import config
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
+# Search mode from environment (default: semantic)
+import os
+SEARCH_MODE = os.environ.get("SEARCH_MODE", "semantic")
+
 
 # --- Models ---
 
@@ -43,7 +47,7 @@ class Session:
     """User session with conversation history."""
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.agent = create_workflow()
+        self.agent = create_workflow(search_mode=SEARCH_MODE)
         self.messages: List[ChatMessage] = []
         self.history: List[dict] = []  # For UI display
         self.title: Optional[str] = None
@@ -174,9 +178,9 @@ async def chat_stream(request: ChatRequest):
                         if isinstance(item, FunctionCallContent) and item.name:
                             yield f"data: {json.dumps({'type': 'tool', 'name': item.name})}\n\n"
                 
-                # Collect response
+                # Collect response (event.text is delta/incremental)
                 if hasattr(event, 'text') and event.text:
-                    response_text = event.text
+                    response_text += event.text
             
             # Send final response
             if response_text:

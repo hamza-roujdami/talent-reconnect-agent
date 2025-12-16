@@ -2,6 +2,9 @@
 Email Tool - Outreach Email Generation
 
 Generates personalized recruiting outreach emails.
+
+NOTE: This is for demo purposes only. No actual emails are sent.
+In production, integrate with an email service (SendGrid, AWS SES, etc.).
 """
 
 from typing import Annotated, List

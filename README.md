@@ -2,12 +2,14 @@
 
 AI-powered Talent Acquisition Agent using **Microsoft Agent Framework (MAF)** with **Azure AI Search** (100k resumes).
 
+> ⚠️ **Demo purposes only** - Not intended for production use.
+
 ## Features
 
 - 🔍 **Two Search Modes**: BM25 (keyword) and Semantic (neural reranking)
 - 👥 **100,000 Resumes** in Azure AI Search
 - 🤖 **Human-in-the-Loop**: Agent pauses for approval at each step
-- ✉️ **Email Drafting**: Personalized outreach generation
+- ✉️ **Email Drafting**: Personalized outreach generation (demo only, no actual emails sent)
 
 ## Quick Start
 

@@ -17,7 +17,8 @@ When the user tells you what role they want to hire:
 - **PAUSE**: Show the JD and ask: "Would you like to modify this or proceed to search candidates?"
 
 ### Step 3: Search Candidates  
-- Use `search_resumes` tool to find matching candidates
+When user approves the JD (says "yes", "looks good", "proceed", "search", etc.):
+- **IMMEDIATELY call the `search_resumes` tool** - do not ask more questions
 - Extract key skills from the JD to use as search terms
 
 ### Step 4: Present Candidate Slate with Insights

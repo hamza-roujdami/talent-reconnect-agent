@@ -1,0 +1,121 @@
+{
+  "search_queries": [
+    {
+      "id": "sq_001",
+      "query": "Senior Python developer Dubai 5 years",
+      "relevant_skills": ["Python", "Django", "FastAPI", "Flask"],
+      "min_experience": 5,
+      "location": "Dubai",
+      "description": "Standard senior Python dev search"
+    },
+    {
+      "id": "sq_002", 
+      "query": "ML Engineer PyTorch production experience",
+      "relevant_skills": ["Python", "PyTorch", "Machine Learning", "MLOps"],
+      "min_experience": 3,
+      "location": null,
+      "description": "ML engineer with production focus"
+    },
+    {
+      "id": "sq_003",
+      "query": "Data Scientist NLP transformers",
+      "relevant_skills": ["Python", "NLP", "Transformers", "BERT", "GPT"],
+      "min_experience": 2,
+      "location": null,
+      "description": "NLP specialist"
+    },
+    {
+      "id": "sq_004",
+      "query": "Backend engineer Node.js AWS",
+      "relevant_skills": ["Node.js", "JavaScript", "AWS", "TypeScript"],
+      "min_experience": 3,
+      "location": null,
+      "description": "Backend with cloud experience"
+    },
+    {
+      "id": "sq_005",
+      "query": "Full stack React Python",
+      "relevant_skills": ["React", "Python", "JavaScript", "FastAPI"],
+      "min_experience": 2,
+      "location": null,
+      "description": "Full stack developer"
+    }
+  ],
+  "behavior_tests": [
+    {
+      "id": "bt_001",
+      "input": "I need an ML engineer",
+      "expected_action": "generate_jd_or_clarify",
+      "expected_tool": null,
+      "should_contain": ["engineer"],
+      "description": "Initial request should lead to JD or clarification"
+    },
+    {
+      "id": "bt_002",
+      "input": "yes",
+      "context": "after_jd_presented",
+      "expected_action": "search",
+      "expected_tool": "search_resumes",
+      "description": "Approval after JD should trigger search"
+    },
+    {
+      "id": "bt_003",
+      "input": "contact candidate 1 and 3",
+      "context": "after_candidates_shown",
+      "expected_action": "draft_email",
+      "expected_tool": "send_outreach_email",
+      "description": "Selection should trigger email drafting"
+    },
+    {
+      "id": "bt_004",
+      "input": "I want more senior candidates",
+      "context": "after_candidates_shown",
+      "expected_action": "refine_search",
+      "expected_tool": "search_resumes",
+      "description": "Refinement request should trigger new search"
+    },
+    {
+      "id": "bt_005",
+      "input": "hi",
+      "expected_action": "greet_and_ask",
+      "expected_tool": null,
+      "should_contain": ["how"],
+      "description": "Greeting should ask about hiring needs"
+    }
+  ],
+  "e2e_scenarios": [
+    {
+      "id": "e2e_001",
+      "name": "Happy Path",
+      "description": "Complete flow from request to email draft",
+      "conversation": [
+        {"role": "user", "content": "I need a senior Python developer in Dubai"},
+        {"role": "assistant", "should_contain": ["python"], "should_call": null},
+        {"role": "user", "content": "yes, looks good, search for candidates"},
+        {"role": "assistant", "should_contain": ["candidate"], "should_call": "search_resumes_semantic"},
+        {"role": "user", "content": "contact candidate 1"},
+        {"role": "assistant", "should_contain": ["email"], "should_call": "send_outreach_email"}
+      ]
+    },
+    {
+      "id": "e2e_002",
+      "name": "Refinement Flow",
+      "description": "User refines search after seeing candidates",
+      "conversation": [
+        {"role": "user", "content": "Find me ML engineers, here is the JD: ML Engineer with Python and PyTorch. Now search for candidates."},
+        {"role": "assistant", "should_contain": ["candidate"], "should_call": "search_resumes_semantic"},
+        {"role": "user", "content": "Search again for more senior candidates with 7+ years experience"},
+        {"role": "assistant", "should_contain": ["candidate"], "should_call": "search_resumes_semantic"}
+      ]
+    },
+    {
+      "id": "e2e_003",
+      "name": "Clarification Flow",
+      "description": "Agent asks for clarification on vague request",
+      "conversation": [
+        {"role": "user", "content": "I need someone technical"},
+        {"role": "assistant", "should_contain": ["what", "role", "skills"], "should_call": null}
+      ]
+    }
+  ]
+}

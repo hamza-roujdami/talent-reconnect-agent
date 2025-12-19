@@ -1,7 +1,7 @@
 """
 Search Quality Evaluation
 
-Tests precision and relevance of BM25 vs Semantic search.
+Tests precision and relevance of semantic search.
 """
 import json
 import sys
@@ -10,7 +10,6 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tools.search_bm25 import search_resumes_bm25
 from tools.search_semantic import search_resumes_semantic
 
 

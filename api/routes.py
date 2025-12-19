@@ -17,16 +17,12 @@ from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from agent_framework import ChatMessage, FunctionCallContent, Role
-from workflow import create_workflow
+from agent_framework import ChatMessage, FunctionCallContent, FunctionResultContent, Role
+from agents.factory import create_recruiter
 from config import config
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent.parent / "static"
-
-# Search mode from environment (default: semantic)
-import os
-SEARCH_MODE = os.environ.get("SEARCH_MODE", "semantic")
 
 
 # --- Models ---
@@ -47,7 +43,7 @@ class Session:
     """User session with conversation history."""
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.agent = create_workflow(search_mode=SEARCH_MODE)
+        self.agent = create_recruiter()
         self.messages: List[ChatMessage] = []
         self.history: List[dict] = []  # For UI display
         self.title: Optional[str] = None
@@ -177,6 +173,9 @@ async def chat_stream(request: ChatRequest):
                     for item in event.contents:
                         if isinstance(item, FunctionCallContent) and item.name:
                             yield f"data: {json.dumps({'type': 'tool', 'name': item.name})}\n\n"
+                        # Stream tool results directly to UI
+                        if isinstance(item, FunctionResultContent) and item.result:
+                            yield f"data: {json.dumps({'type': 'tool_result', 'content': str(item.result)})}\n\n"
                 
                 # Collect response (event.text is delta/incremental)
                 if hasattr(event, 'text') and event.text:

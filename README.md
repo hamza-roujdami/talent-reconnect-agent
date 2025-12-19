@@ -6,7 +6,7 @@ AI-powered Talent Acquisition Agent using **Microsoft Agent Framework (MAF)** wi
 
 ## Features
 
-- 🔍 **Two Search Modes**: BM25 (keyword) and Semantic (neural reranking)
+- 🔍 **Semantic Search**: BM25 + Neural reranking + Scoring profiles
 - 👥 **100,000 Resumes** in Azure AI Search
 - 🤖 **Human-in-the-Loop**: Agent pauses for approval at each step
 - ✉️ **Email Drafting**: Personalized outreach generation (demo only, no actual emails sent)
@@ -20,38 +20,15 @@ pip install -r requirements.txt
 cp .env.example .env  # Edit with your credentials
 
 # 2. Run
-python chat.py                  # BM25 mode (default)
-python chat.py --mode semantic  # Semantic mode (+15-25% relevance)
+python chat.py                  # Terminal chat
 python main.py                  # API server on :8000
 ```
-
-## Search Modes
-
-| Mode | Command | How it Works | Best For |
-|------|---------|--------------|----------|
-| **BM25** | `--mode bm25` | Keyword matching (TF-IDF) | Exact skill matches |
-| **Semantic** | `--mode semantic` | Neural reranking | Natural language queries |
-
-### Example Comparison
-
-```
-Query: "Data Scientist Python Machine Learning Dubai"
-
-BM25 Result #1:     Sunita Jones (3 yrs) - keyword match
-Semantic Result #1: Hind Thompson (5 yrs, relevance: 3.04) - meaning match
-```
-
-Semantic search understands:
-- "ML" = "Machine Learning"
-- "UAE" ≈ "Dubai" ≈ "Gulf region"
-- "build APIs" → finds "Backend Developer"
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    chat.py / main.py                            │
-│                 (--mode bm25 | semantic)                        │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -66,46 +43,56 @@ Semantic search understands:
 └─────────────────────────────────────────────────────────────────┘
             │                                   │
             ▼                                   ▼
-┌─────────────────────────┐       ┌─────────────────────────────┐
-│   search_resumes_*()    │       │   send_outreach_email()     │
-│                         │       │                             │
-│  BM25: queryType=simple │       │  Personalized drafts        │
-│  Semantic: queryType=   │       │  Candidate-specific         │
-│    semantic + reranker  │       │                             │
-└─────────────────────────┘       └─────────────────────────────┘
+┌─────────────────────────────┐   ┌─────────────────────────────┐
+│ search_resumes_semantic()   │   │   send_outreach_email()     │
+│                             │   │                             │
+│  • BM25 retrieval           │   │  Personalized drafts        │
+│  • Scoring profile boost    │   │  Candidate-specific         │
+│  • Semantic reranking       │   │                             │
+│  • Custom match scoring     │   │                             │
+└─────────────────────────────┘   └─────────────────────────────┘
             │
             ▼
-┌─────────────────────────┐
-│    Azure AI Search      │
-│      100k resumes       │
-│                         │
-│  • Semantic config ✓    │
-│  • BM25 + reranking     │
-└─────────────────────────┘
+┌─────────────────────────────┐
+│    Azure AI Search          │
+│      100k resumes           │
+│                             │
+│  • Semantic ranker ✓        │
+│  • Scoring profiles ✓       │
+│  • Synonyms ✓               │
+│  • Facets ✓                 │
+└─────────────────────────────┘
 ```
 
 ## Project Structure
 
 ```
 talent-reconnect-agent/
-├── chat.py                 # Terminal chat (--mode bm25|semantic)
+├── chat.py                 # Terminal chat
 ├── main.py                 # FastAPI server (:8000)
-├── workflow.py             # Creates agent with selected search mode
 ├── config.py               # Environment configuration
 ├── agents/
-│   └── factory.py          # Agent creation with search mode
+│   └── factory.py          # create_recruiter() agent
 ├── tools/
-│   ├── search_bm25.py      # BM25 search (Azure SDK)
-│   ├── search_semantic.py  # Semantic search (Azure SDK)
+│   ├── search_semantic.py  # Semantic search (BM25 + Reranker)
+│   ├── scoring.py          # Custom match scoring
 │   └── email.py            # Outreach email drafts
 ├── instructions/
 │   └── recruiter.md        # Agent system prompt
-├── scripts/
-│   ├── setup_search.py     # Create Azure AI Search index
-│   ├── generate_resumes.py # Generate synthetic resumes
-│   └── benchmark_search.py # Compare BM25 vs Semantic
-└── static/
-    └── index.html          # Web chat UI
+├── api/
+│   └── routes.py           # /chat endpoint with streaming
+├── static/
+│   └── index.html          # Web chat UI
+├── tools/azure-ai-search/  # Learning scripts
+│   ├── 00-overview.md      # Concepts guide
+│   ├── 01-create-index.py  # Create index schema
+│   ├── 02-push-data.py     # Generate & upload resumes
+│   └── 03-search.py        # Search methods demo
+└── evals/
+    ├── golden_dataset.json # Test queries and expectations
+    ├── test_search_quality.py
+    ├── test_agent_behavior.py
+    └── test_e2e_scenarios.py
 ```
 
 ## Tech Stack
@@ -113,10 +100,53 @@ talent-reconnect-agent/
 | Component | Technology |
 |-----------|------------|
 | **Framework** | Microsoft Agent Framework (MAF) |
-| **LLM** | GPT-4.1 (OpenAI-compatible) |
+| **LLM** | Azure OpenAI (gpt-4o) |
 | **Search** | Azure AI Search (100k docs) |
 | **Search SDK** | `azure-search-documents` |
 | **API** | FastAPI + SSE streaming |
+
+## Azure AI Search Features
+
+| Feature | How We Use It | Benefit |
+|---------|---------------|---------|
+| **Semantic Ranking** | `query_type=QueryType.SEMANTIC` | Neural reranker understands meaning - "ML" matches "Machine Learning" |
+| **Scoring Profiles** | `scoring_profile="talent-boost"` | Boost title 2x, skills 1.5x, experience for better ranking |
+| **Synonyms** | `talent-synonyms` map | ML → Machine Learning, K8s → Kubernetes auto-expanded |
+| **Facets** | `facets=["location", "current_title"]` | Shows candidate pool distribution (50 in Dubai, 30 in AD) |
+| **Semantic Configuration** | `semantic_configuration_name="default"` | Prioritizes title, skills, summary fields |
+| **JD-Based Search** | `job_description` parameter | Understands role context - "startup", "collaborate with ML team" |
+| **Field Selection** | `select=["name", "skills", ...]` | Return only needed fields - reduces latency |
+| **Filtering** | `filter="experience_years ge 3"` | Pre-filter results before ranking |
+
+### Search Architecture
+
+```
+User Query: "Senior Python ML Engineer in Dubai with 5+ years"
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Azure AI Search                          │
+├─────────────────────────────────────────────────────────────┤
+│  1. FILTER STAGE                                            │
+│     └─ experience_years >= 5 (removes ~60% of docs)         │
+├─────────────────────────────────────────────────────────────┤
+│  2. BM25 RETRIEVAL                                          │
+│     └─ Keyword match: Python, ML, Engineer, Dubai           │
+│     └─ Returns top 50 candidates (configurable)             │
+├─────────────────────────────────────────────────────────────┤
+│  3. SEMANTIC RERANKING (if enabled)                         │
+│     └─ Neural model scores each result by MEANING           │
+│     └─ Understands context: "ML" = "Machine Learning"       │
+│     └─ Returns top_k with @search.reranker_score            │
+├─────────────────────────────────────────────────────────────┤
+│  4. FIELD PROJECTION                                        │
+│     └─ Returns: name, title, skills, experience, location   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+              Application-Level Scoring
+         (skills match %, experience fit, location)
+```
 
 ## Environment Variables
 
@@ -134,29 +164,34 @@ AZURE_SEARCH_INDEX=resumes
 
 ## Data Setup
 
-### 1. Create Index with Semantic Config
+### 1. Create Index
 
 ```bash
-python scripts/setup_search.py
+cd tools/azure-ai-search
+python 01-create-index.py --dry-run  # Preview
+python 01-create-index.py            # Create
 ```
-
-Creates index with:
-- Searchable fields (name, title, skills, summary)
-- Filterable fields (experience_years, location)
-- Semantic configuration for neural reranking
 
 ### 2. Generate & Upload Resumes
 
 ```bash
-# Generate 100k synthetic resumes
-python scripts/generate_resumes.py --count 100000 --upload
+python 02-push-data.py --count 100000
 ```
 
-### 3. Benchmark Search Modes
+### 3. Test Search
 
 ```bash
-python scripts/benchmark_search.py
+python 03-search.py --method semantic --query "ML Engineer Dubai"
+python 03-search.py --method facets --query "Data Engineer"
+python 03-search.py --reference  # OData filter syntax
 ```
+
+### Semantic Understanding
+
+The search understands:
+- "ML" = "Machine Learning"
+- "UAE" ≈ "Dubai" ≈ "Gulf region"
+- "build APIs" → finds "Backend Developer"
 
 ## API Endpoints
 
@@ -169,21 +204,7 @@ python scripts/benchmark_search.py
 
 ## How Search Works
 
-### BM25 (Keyword Matching)
-
-```python
-# tools/search_bm25.py
-client.search(
-    search_text="Python ML Engineer",
-    # No query_type = defaults to BM25
-)
-```
-
-- Matches exact keywords
-- Scores by term frequency × document length
-- Fast (~100ms)
-
-### Semantic (Neural Reranking)
+### Semantic Search (BM25 + Neural Reranking)
 
 ```python
 # tools/search_semantic.py
@@ -191,11 +212,22 @@ client.search(
     search_text="Python ML Engineer",
     query_type=QueryType.SEMANTIC,
     semantic_configuration_name="default",
+    scoring_profile="talent-boost",  # Custom relevance boost
+    facets=["location", "current_title"],  # Aggregated counts
 )
 ```
 
-- BM25 first, then neural reranker
+**Pipeline:**
+1. **BM25** - Keyword matching (retrieval)
+2. **Scoring Profile** - Boost title 2x, skills 1.5x, experience
+3. **Semantic Reranker** - Neural model reorders by meaning
+4. **Synonyms** - ML → Machine Learning auto-expanded
+5. **Custom Scoring** - `compute_match_score()` for final ranking
+
+**Features:**
 - Understands meaning and context
+- Facets show candidate pool distribution
+- Synonyms handle abbreviations (ML, AI, K8s)
 - +15-25% relevance improvement
 - Slightly slower (~160ms)
 

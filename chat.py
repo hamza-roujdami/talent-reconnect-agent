@@ -4,15 +4,13 @@ Terminal Chat Interface
 Simple CLI for testing the talent reconnect agent locally.
 
 Usage:
-    python chat.py                    # Default: Semantic search
-    python chat.py --mode bm25        # BM25 keyword search
-    python chat.py --mode semantic    # Semantic search (+15-25%)
-    python chat.py --verbose          # Show full tool args/results
+    python chat.py             # Run agent
+    python chat.py --verbose   # Show full tool args/results
 """
 import argparse
 import asyncio
 import sys
-from workflow import create_workflow
+from agents.factory import create_recruiter
 from agent_framework import (
     ChatMessage,
     FunctionCallContent,
@@ -21,25 +19,17 @@ from agent_framework import (
 
 # Parse arguments
 parser = argparse.ArgumentParser(description="Talent Reconnect Chat")
-parser.add_argument("--mode", "-m", choices=["bm25", "semantic"], 
-                    default="semantic", help="Search mode (default: semantic)")
 parser.add_argument("--verbose", "-v", action="store_true", help="Show tool details")
 args = parser.parse_args()
 
 VERBOSE = args.verbose
-SEARCH_MODE = args.mode
 
 
 async def chat():
     """Main interactive chat loop."""
-    mode_labels = {
-        "bm25": "BM25 (keyword matching)",
-        "semantic": "Semantic (+15-25% relevance)",
-    }
-    
     print("\n🎯 Talent Reconnect - AI Recruiting Agent")
     print("=" * 50)
-    print(f"Search Mode: {mode_labels[SEARCH_MODE]}")
+    print("Search: Semantic (BM25 + Neural Reranking + Synonyms + Facets)")
     print("I help you find and reach out to candidates.")
     print("\nWorkflow:")
     print("  1. Understand your requirements")
@@ -47,8 +37,8 @@ async def chat():
     print("  3. Generate personalized outreach")
     print("\nType 'quit' to exit\n")
     
-    # Create agent with selected search mode
-    agent = create_workflow(search_mode=SEARCH_MODE)
+    # Create agent
+    agent = create_recruiter()
     messages = []
     
     while True:

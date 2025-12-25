@@ -29,9 +29,8 @@ python evals/test_e2e_scenarios.py
 Tests how well the search finds relevant candidates.
 
 **Metrics:**
-- **Precision@5**: % of top-5 results that are relevant
-- **MRR**: Mean Reciprocal Rank (how high is first good result?)
-- **BM25 vs Semantic**: Compare search modes
+- **Precision@5**: % of top-5 cited skills that match the expected requirements
+- **Context Coverage**: Checks whether the agent mentions expected skills/locations when grounded
 
 ```bash
 python evals/test_search_quality.py
@@ -40,9 +39,8 @@ python evals/test_search_quality.py
 **Sample Output:**
 ```
 Query: "Senior ML Engineer PyTorch Dubai"
-  BM25 Precision@5: 40%
   Semantic Precision@5: 80%
-  Semantic MRR: 0.83
+  Context Coverage: 3 / 4 target skills found
 ```
 
 ## 2. Agent Behavior Evaluation
@@ -53,7 +51,7 @@ Tests if agent follows the HITL workflow correctly.
 | Input | Expected Behavior |
 |-------|-------------------|
 | "I need an ML engineer" | Generate JD or ask clarifying questions |
-| "yes" (after JD) | Call `search_resumes` tool |
+| "yes" (after JD) | Share Azure AI Search grounded candidates |
 | "contact 1 and 3" | Call `send_outreach_email` tool |
 | "refine for more senior" | Search again with updated criteria |
 
@@ -108,7 +106,7 @@ After running evals:
 │ Search Quality                                  │
 │   Semantic Precision@5: 76%                     │
 │   Semantic MRR: 0.81                            │
-│   BM25 vs Semantic: +18% relevance              │
+│   Context Coverage: 78%                         │
 ├─────────────────────────────────────────────────┤
 │ Agent Behavior                                  │
 │   Workflow Compliance: 9/10 tests passed        │

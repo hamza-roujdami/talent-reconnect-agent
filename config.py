@@ -12,6 +12,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _first_env(*names: str, default: str = "") -> str:
+    """Return the first populated environment variable (or *default*)."""
+
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return default
+
+
 # LLM Provider type
 LLMProvider = Literal["azure_openai", "compass", "openai"]
 
@@ -50,19 +60,19 @@ class Config:
     @classmethod
     def from_env(cls) -> "Config":
         """Load configuration from environment variables."""
-        search_endpoint = os.getenv("AZURE_SEARCH_ENDPOINT", "")
+        search_endpoint = _first_env("SEARCH_SERVICE_ENDPOINT", "AZURE_SEARCH_ENDPOINT")
         
         # Determine LLM provider
-        azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+        azure_endpoint = _first_env("FOUNDRY_CHAT_ENDPOINT", "AZURE_OPENAI_ENDPOINT")
         compass_key = os.getenv("COMPASS_API_KEY", "")
         
         if azure_endpoint:
             # Azure OpenAI (Entra ID auth by default if no API key)
             llm_config = LLMConfig(
                 provider="azure_openai",
-                model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                model=_first_env("FOUNDRY_MODEL_PRIMARY", "AZURE_OPENAI_DEPLOYMENT", default="gpt-4o-mini"),
                 azure_endpoint=azure_endpoint,
-                azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                azure_deployment=_first_env("FOUNDRY_MODEL_PRIMARY", "AZURE_OPENAI_DEPLOYMENT", default="gpt-4o-mini"),
                 api_key=os.getenv("AZURE_OPENAI_KEY"),  # Optional - uses Entra ID if not set
                 use_entra_id=not os.getenv("AZURE_OPENAI_KEY"),
             )
@@ -83,12 +93,15 @@ class Config:
                 base_url="https://api.core42.ai/v1",
             )
         
+        search_key = _first_env("SEARCH_SERVICE_API_KEY", "AZURE_SEARCH_API_KEY", "AZURE_SEARCH_KEY")
+        search_index = _first_env("SEARCH_RESUME_INDEX", "AZURE_SEARCH_INDEX_NAME", "AZURE_SEARCH_INDEX", default="resumes")
+
         return cls(
             llm=llm_config,
             search=SearchConfig(
                 endpoint=search_endpoint,
-                key=os.getenv("AZURE_SEARCH_KEY", ""),
-                index=os.getenv("AZURE_SEARCH_INDEX", "resumes"),
+                key=search_key,
+                index=search_index,
                 enabled=bool(search_endpoint),
             ),
             use_mock_data=os.getenv("USE_MOCK_DATA", "true").lower() == "true",
@@ -98,3 +111,18 @@ class Config:
 
 # Global singleton
 config = Config.from_env()
+
+
+{
+  "servers": {
+    "microsoft-learn": {
+      "command": "python",
+      "args": [
+        "-m",
+        "microsoft_learn_mcp",
+        "--lang",
+        "en-us"
+      ]
+    }
+  }
+}

@@ -23,6 +23,7 @@ Usage:
 import os
 from dotenv import load_dotenv
 from azure.core.credentials import AzureKeyCredential
+from azure.core.exceptions import ResourceNotFoundError
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
     SearchIndex,
@@ -30,14 +31,21 @@ from azure.search.documents.indexes.models import (
     SearchFieldDataType,
     SimpleField,
     SearchableField,
+    SemanticConfiguration,
+    SemanticField,
+    SemanticPrioritizedFields,
+    SemanticSearch,
 )
 
 load_dotenv()
 
 # Azure AI Search configuration
 SEARCH_ENDPOINT = os.environ["AZURE_SEARCH_ENDPOINT"]
-SEARCH_KEY = os.environ["AZURE_SEARCH_KEY"]
-INDEX_NAME = "feedback"
+SEARCH_KEY = os.environ.get("AZURE_SEARCH_API_KEY") or os.environ.get("AZURE_SEARCH_KEY")
+if not SEARCH_KEY:
+    raise RuntimeError("Set AZURE_SEARCH_API_KEY (or legacy AZURE_SEARCH_KEY) before running this script.")
+INDEX_NAME = os.environ.get("AZURE_FEEDBACK_INDEX_NAME", "feedback")
+SEMANTIC_CONFIG_NAME = os.environ.get("AZURE_FEEDBACK_SEMANTIC_CONFIG", "feedback-semantic")
 
 
 def create_feedback_index():
@@ -118,20 +126,42 @@ def create_feedback_index():
         ),
     ]
     
-    # Create index
-    index = SearchIndex(name=INDEX_NAME, fields=fields)
-    
-    # Delete if exists
+    semantic_settings = SemanticSearch(
+        configurations=[
+            SemanticConfiguration(
+                name=SEMANTIC_CONFIG_NAME,
+                prioritized_fields=SemanticPrioritizedFields(
+                    content_fields=[
+                        SemanticField(field_name="notes"),
+                        SemanticField(field_name="strengths"),
+                        SemanticField(field_name="concerns"),
+                    ],
+                    keywords_fields=[
+                        SemanticField(field_name="candidate_name"),
+                        SemanticField(field_name="role"),
+                    ],
+                ),
+            )
+        ]
+    )
+
+    index = SearchIndex(name=INDEX_NAME, fields=fields, semantic_search=semantic_settings)
+
     try:
-        client.delete_index(INDEX_NAME)
-        print(f"🗑️  Deleted existing '{INDEX_NAME}' index")
-    except Exception:
-        pass
-    
-    # Create new index
-    client.create_index(index)
-    print(f"✅ Created '{INDEX_NAME}' index")
-    print(f"\nFields:")
+        client.get_index(INDEX_NAME)
+        exists = True
+    except ResourceNotFoundError:
+        exists = False
+
+    if exists:
+        client.create_or_update_index(index)
+        action = "♻️  Updated"
+    else:
+        client.create_index(index)
+        action = "✅ Created"
+
+    print(f"{action} '{INDEX_NAME}' index with semantic config '{SEMANTIC_CONFIG_NAME}'")
+    print("\nFields:")
     for field in fields:
         print(f"  - {field.name}: {field.type}")
 

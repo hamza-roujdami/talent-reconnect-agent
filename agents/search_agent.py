@@ -1,66 +1,40 @@
-"""
-Search Agent - Searches resumes in Azure AI Search.
+"""TalentScout (Search Agent) backed by Azure AI Search context."""
+from __future__ import annotations
 
-Has access to search tools:
-- search_resumes_semantic: Main search function
-- get_candidate_details: Drill into specific candidates
-- show_skill_comparison: Compare candidates side-by-side
-"""
-from agent_framework import ChatAgent
-from tools.search_semantic import search_resumes_semantic, get_candidate_details, show_skill_comparison
+from agent_framework import ChatAgent, ContextProvider
+from tools.search_provider import build_search_context_provider
+
+SEARCH_AGENT_NAME = "TalentScout"
 
 
-def create_search_agent(chat_client) -> ChatAgent:
-    """Create the Search Agent with Azure AI Search tools.
-    
-    This agent:
-    1. Takes the ideal profile from ProfileAgent
-    2. Executes semantic search against 100k+ resumes
-    3. Returns ranked candidates
-    """
+def create_search_agent(
+    chat_client,
+    *,
+    context_provider: ContextProvider | None = None,
+) -> ChatAgent:
+    """Create the Search Agent grounded with Azure AI Search context."""
+
+    provider = context_provider or build_search_context_provider()
+
     return chat_client.create_agent(
-        name="search_agent",
-        instructions="""You are a recruiting search specialist with access to a database of 100,000+ resumes.
+        name=SEARCH_AGENT_NAME,
+        temperature=0.1,
+        instructions="""You are a recruiting search specialist.
 
-## Your Tools
+Use the Azure AI Search context to surface highly relevant candidates and cite
+sources in `[doc-id†source]` format. Present results as a numbered list (1., 2.,
+3., …) so the recruiter can reference them later.
 
-1. **search_resumes_semantic** - Main search function
-   - Pass the job_description from the ideal profile
-   - Extract key skills for the skills parameter
-   - Use filters for location, experience range
-
-2. **get_candidate_details** - Get full profiles
-   - Call when user wants to see details
-   - Pass candidate numbers: [1, 2, 3] etc.
-
-3. **show_skill_comparison** - Compare candidates
-   - Call when user wants to compare skills
-   - Shows side-by-side skill matrix
-
-## When to Search
-
-- After ProfileAgent has created an ideal profile
-- When orchestrator hands off with search requirements
-- When user asks to "find", "search", "look for" candidates
-
-## Search Tips
-
-1. Use the full job description for richer semantic matching
-2. Extract 3-5 key skills for the skills parameter
-3. Apply location filter if specified
-4. Apply experience filter if specified
-
-## After Search
-
-Present results concisely. The tool output includes candidate cards with:
-- Match percentage
-- Name, title, location
-- Key skills
-- Experience
-
-Add a brief one-liner: "Reply with a number to see details, compare skills, or draft an email."
-
-Do NOT add a numbered menu of options - keep it short.
+## Rules
+1. When the user asks to "search", "find", or "refresh" candidates, describe
+   a new ranked list grounded entirely in the provided context.
+2. When they ask for details about candidate numbers you already shared, reuse
+   that context—do not invent new people unless the user explicitly requests
+   another search.
+3. Highlight why each candidate matches (skills, years, location) and include
+   1‑sentence summaries.
+4. If the context does not contain an answer, say so and ask for clarifications
+   instead of guessing.
 """,
-        tools=[search_resumes_semantic, get_candidate_details, show_skill_comparison],
+        context_providers=[provider],
     )

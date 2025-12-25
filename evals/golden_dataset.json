@@ -55,7 +55,7 @@
       "input": "yes",
       "context": "after_jd_presented",
       "expected_action": "search",
-      "expected_tool": "search_resumes",
+      "expected_tool": null,
       "description": "Approval after JD should trigger search"
     },
     {
@@ -71,7 +71,7 @@
       "input": "I want more senior candidates",
       "context": "after_candidates_shown",
       "expected_action": "refine_search",
-      "expected_tool": "search_resumes",
+      "expected_tool": null,
       "description": "Refinement request should trigger new search"
     },
     {
@@ -92,7 +92,7 @@
         {"role": "user", "content": "I need a senior Python developer in Dubai"},
         {"role": "assistant", "should_contain": ["python"], "should_call": null},
         {"role": "user", "content": "yes, looks good, search for candidates"},
-        {"role": "assistant", "should_contain": ["candidate"], "should_call": "search_resumes_semantic"},
+        {"role": "assistant", "should_contain": ["candidate"], "should_call": null},
         {"role": "user", "content": "contact candidate 1"},
         {"role": "assistant", "should_contain": ["email"], "should_call": "send_outreach_email"}
       ]
@@ -103,9 +103,9 @@
       "description": "User refines search after seeing candidates",
       "conversation": [
         {"role": "user", "content": "Find me ML engineers, here is the JD: ML Engineer with Python and PyTorch. Now search for candidates."},
-        {"role": "assistant", "should_contain": ["candidate"], "should_call": "search_resumes_semantic"},
+        {"role": "assistant", "should_contain": ["candidate"], "should_call": null},
         {"role": "user", "content": "Search again for more senior candidates with 7+ years experience"},
-        {"role": "assistant", "should_contain": ["candidate"], "should_call": "search_resumes_semantic"}
+        {"role": "assistant", "should_contain": ["candidate"], "should_call": null}
       ]
     },
     {

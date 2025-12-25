@@ -32,11 +32,11 @@ load_dotenv()
 # =============================================================================
 
 ENDPOINT = os.environ.get("AZURE_SEARCH_ENDPOINT")
-KEY = os.environ.get("AZURE_SEARCH_KEY")
-INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX", "resumes")
+KEY = os.environ.get("AZURE_SEARCH_API_KEY") or os.environ.get("AZURE_SEARCH_KEY")
+INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX_NAME") or os.environ.get("AZURE_SEARCH_INDEX", "resumes")
 
 if not ENDPOINT or not KEY:
-    print("❌ Missing AZURE_SEARCH_ENDPOINT or AZURE_SEARCH_KEY")
+    print("❌ Missing AZURE_SEARCH_ENDPOINT or AZURE_SEARCH_API_KEY (legacy: AZURE_SEARCH_KEY)")
     exit(1)
 
 # =============================================================================
@@ -49,6 +49,7 @@ fields = [
         name="id",
         type=SearchFieldDataType.String,
         key=True,
+        sortable=True,  # enables deterministic paging/order when syncing auxiliary data
     ),
     
     # Searchable text fields

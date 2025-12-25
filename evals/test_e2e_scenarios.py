@@ -92,7 +92,7 @@ async def run_e2e_eval():
         print("-" * 40)
         
         # Create fresh agent for each scenario
-        agent = create_recruiter("semantic")
+        agent = create_recruiter()
         
         turn_results = await run_conversation(agent, scenario["conversation"])
         

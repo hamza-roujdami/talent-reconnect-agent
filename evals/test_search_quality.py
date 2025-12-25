@@ -1,16 +1,20 @@
-"""
-Search Quality Evaluation
-
-Tests precision and relevance of semantic search.
-"""
+"""Search Quality Evaluation using Azure AI Search context grounding."""
+import asyncio
 import json
 import sys
 from pathlib import Path
 
+from agent_framework import ChatAgent
+from agent_framework.azure import AzureOpenAIChatClient
+from azure.identity import DefaultAzureCredential
+
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tools.search_semantic import search_resumes_semantic
+from config import config
+from tools.search_provider import build_search_context_provider
+
+API_VERSION = "2024-10-21"
 
 
 def load_golden_dataset():
@@ -51,60 +55,95 @@ def calculate_precision(results: str, expected_skills: list) -> float:
     return len(overlap) / len(expected_set) if expected_set else 0.0
 
 
+def _create_chat_client() -> AzureOpenAIChatClient:
+    llm = config.llm
+    if llm.provider != "azure_openai":
+        raise RuntimeError("Search quality eval requires Azure OpenAI configuration.")
+
+    if llm.use_entra_id:
+        credential = DefaultAzureCredential()
+        return AzureOpenAIChatClient(
+            endpoint=llm.azure_endpoint,
+            deployment_name=llm.azure_deployment,
+            credential=credential,
+            api_version=API_VERSION,
+        )
+
+    if not llm.api_key:
+        raise RuntimeError("AZURE_OPENAI_KEY is required when not using Entra ID auth.")
+
+    return AzureOpenAIChatClient(
+        endpoint=llm.azure_endpoint,
+        deployment_name=llm.azure_deployment,
+        api_key=llm.api_key,
+        api_version=API_VERSION,
+    )
+
+
+async def semantic_search_response(prompt: str) -> str:
+    provider = build_search_context_provider()
+    async with provider:
+        chat_client = _create_chat_client()
+        agent: ChatAgent = chat_client.create_agent(
+            name="search_eval_probe",
+            instructions=(
+                "You are evaluating resume relevance. Answer using the Azure AI Search "
+                "context and include short bullet points with citations."
+            ),
+            temperature=0.2,
+            context_providers=[provider],
+        )
+
+        chunks: list[str] = []
+        async for event in agent.run_stream(prompt):
+            if hasattr(event, "text") and event.text:
+                chunks.append(event.text)
+
+        return "".join(chunks).strip()
+
+
+async def run_semantic_batch(queries: list[str]) -> list[str]:
+    responses: list[str] = []
+    for query in queries:
+        responses.append(await semantic_search_response(query))
+    return responses
+
+
 def run_search_eval():
-    """Run search quality evaluation."""
+    """Run search quality evaluation using semantic grounding."""
     print("=" * 60)
     print("Search Quality Evaluation")
     print("=" * 60)
-    
+
     dataset = load_golden_dataset()
     queries = dataset["search_queries"]
-    
-    bm25_scores = []
+
+    prompts = [q["query"] for q in queries]
+    semantic_results = asyncio.run(run_semantic_batch(prompts))
+
     semantic_scores = []
-    
-    for query_data in queries:
+
+    for query_data, result_text in zip(queries, semantic_results):
         query = query_data["query"]
         expected_skills = query_data["relevant_skills"]
-        
+
         print(f"\n📝 Query: {query}")
         print(f"   Expected skills: {', '.join(expected_skills)}")
-        
-        # BM25 search
-        bm25_results = search_resumes_bm25(query)
-        bm25_precision = calculate_precision(bm25_results, expected_skills)
-        bm25_scores.append(bm25_precision)
-        
-        # Semantic search
-        semantic_results = search_resumes_semantic(query)
-        semantic_precision = calculate_precision(semantic_results, expected_skills)
+
+        semantic_precision = calculate_precision(result_text, expected_skills)
         semantic_scores.append(semantic_precision)
-        
-        print(f"   BM25 Precision: {bm25_precision:.0%}")
+
         print(f"   Semantic Precision: {semantic_precision:.0%}")
-        
-        if semantic_precision > bm25_precision:
-            print(f"   ✅ Semantic wins (+{semantic_precision - bm25_precision:.0%})")
-        elif bm25_precision > semantic_precision:
-            print(f"   ⚠️ BM25 wins (+{bm25_precision - semantic_precision:.0%})")
-        else:
-            print(f"   ➡️ Tie")
-    
-    # Summary
-    avg_bm25 = sum(bm25_scores) / len(bm25_scores) if bm25_scores else 0
+
     avg_semantic = sum(semantic_scores) / len(semantic_scores) if semantic_scores else 0
-    
+
     print("\n" + "=" * 60)
     print("Summary")
     print("=" * 60)
-    print(f"Average BM25 Precision: {avg_bm25:.0%}")
     print(f"Average Semantic Precision: {avg_semantic:.0%}")
-    print(f"Semantic Improvement: {avg_semantic - avg_bm25:+.0%}")
-    
+
     return {
-        "bm25_avg_precision": avg_bm25,
         "semantic_avg_precision": avg_semantic,
-        "improvement": avg_semantic - avg_bm25,
     }
 
 

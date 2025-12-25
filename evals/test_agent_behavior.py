@@ -73,8 +73,8 @@ async def run_behavior_eval():
     dataset = load_golden_dataset()
     tests = dataset["behavior_tests"]
     
-    # Create agent (semantic mode)
-    agent = create_recruiter("semantic")
+    # Create agent (Azure AI Search grounded)
+    agent = create_recruiter()
     
     results = []
     passed = 0

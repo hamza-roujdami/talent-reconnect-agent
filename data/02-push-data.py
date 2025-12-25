@@ -35,8 +35,8 @@ load_dotenv()
 # =============================================================================
 
 ENDPOINT = os.environ.get("AZURE_SEARCH_ENDPOINT")
-KEY = os.environ.get("AZURE_SEARCH_KEY")
-INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX", "resumes")
+KEY = os.environ.get("AZURE_SEARCH_API_KEY") or os.environ.get("AZURE_SEARCH_KEY")
+INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX_NAME") or os.environ.get("AZURE_SEARCH_INDEX", "resumes")
 
 # Initialize Faker with multiple locales
 fake = Faker(['en_US', 'en_GB', 'en_AU', 'en_IN', 'ar_AE'])
@@ -211,7 +211,7 @@ def generate_resumes(count: int) -> List[Dict]:
 def upload_to_search(resumes: List[Dict], batch_size: int = 1000):
     """Upload resumes to Azure AI Search in batches."""
     if not ENDPOINT or not KEY:
-        print("❌ Missing AZURE_SEARCH_ENDPOINT or AZURE_SEARCH_KEY")
+        print("❌ Missing AZURE_SEARCH_ENDPOINT or AZURE_SEARCH_API_KEY (legacy: AZURE_SEARCH_KEY)")
         sys.exit(1)
     
     client = SearchClient(

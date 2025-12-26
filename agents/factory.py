@@ -8,7 +8,7 @@ Supports LLM providers:
 """
 from pathlib import Path
 from config import config
-from tools.search_provider import build_search_context_provider
+from tools.search_provider import build_search_context_provider, build_resume_search_provider, build_hybrid_agentic_provider
 from tools.outreach_email import send_outreach_email
 
 
@@ -94,7 +94,7 @@ def create_recruiting_workflow():
     
     # Create specialist agents
     profile_agent = create_profile_agent(chat_client)
-    search_agent = create_search_agent(chat_client, context_provider=build_search_context_provider())
+    search_agent = create_search_agent(chat_client, context_provider=build_hybrid_agentic_provider())
     insights_agent = create_insights_agent(chat_client)
     outreach_agent = create_outreach_agent(chat_client)
     

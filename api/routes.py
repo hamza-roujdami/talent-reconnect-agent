@@ -44,6 +44,28 @@ TOOL_FOLLOW_UPS = {
 }
 
 
+def _sanitize_user_text(text: str) -> str:
+    """Trim and bound user input to reduce prompt injection surface."""
+
+    if not isinstance(text, str):
+        return ""
+    cleaned = text.strip()
+    return cleaned[:2000]
+
+
+def _sanitize_output(text: str) -> str:
+    """Lightweight scrub to avoid leaking markup or routing chatter."""
+
+    if not isinstance(text, str):
+        return ""
+    blocked_tokens = ["<script", "</script", "javascript:"]
+    sanitized = text
+    for token in blocked_tokens:
+        sanitized = sanitized.replace(token, "")
+        sanitized = sanitized.replace(token.upper(), "")
+    return sanitized
+
+
 def _handoff_name(agent_name: str) -> str:
     return f"handoff_to_{agent_name.replace(' ', '').lower()}"
 
@@ -193,6 +215,7 @@ async def chat_stream(request: ChatRequest):
     
     async def generate() -> AsyncGenerator[str, None]:
         session = get_or_create_session(request.session_id)
+        incoming_message = _sanitize_user_text(request.message)
         
         # Send session ID
         yield f"data: {json.dumps({'type': 'session', 'session_id': session.session_id})}\n\n"
@@ -200,10 +223,10 @@ async def chat_stream(request: ChatRequest):
         # Update session
         session.updated_at = datetime.now()
         if not session.title:
-            session.title = request.message[:50] + ("..." if len(request.message) > 50 else "")
+            session.title = incoming_message[:50] + ("..." if len(incoming_message) > 50 else "")
         
         # Add user message to history
-        session.history.append({"role": "user", "text": request.message})
+        session.history.append({"role": "user", "text": incoming_message})
 
         # Drop stale pending requests so old prompts don't hijack new conversations
         _prune_pending_requests(session)
@@ -211,11 +234,11 @@ async def chat_stream(request: ChatRequest):
         try:
             # Choose workflow method based on pending requests
             if session.pending_requests:
-                responses = {req.request_id: request.message for (req, _) in session.pending_requests}
+                responses = {req.request_id: incoming_message for (req, _) in session.pending_requests}
                 session.pending_requests = []
                 stream = session.workflow.send_responses_streaming(responses)
             else:
-                stream = session.workflow.run_stream(request.message)
+                stream = session.workflow.run_stream(incoming_message)
             
             response_text = ""
             fallback_blocked_text = None  # Last blocked snippet, in case nothing else streams
@@ -240,8 +263,9 @@ async def chat_stream(request: ChatRequest):
                         
                         # If switching away from RoleCrafter, flush the buffer
                         if profile_buffer and agent_name != PROFILE_AGENT_NAME:
-                            yield f"data: {json.dumps({'type': 'text', 'content': profile_buffer})}\n\n"
-                            response_text += profile_buffer
+                            safe_buffer = _sanitize_output(profile_buffer)
+                            yield f"data: {json.dumps({'type': 'text', 'content': safe_buffer})}\n\n"
+                            response_text += safe_buffer
                             profile_buffer = ""
                     data = event.data
                     if hasattr(data, 'contents') and data.contents:
@@ -263,7 +287,8 @@ async def chat_stream(request: ChatRequest):
                                         context = args.get('context', '')
                                         # If context contains profile card markers, show it
                                         if '🎯' in context or '📋' in context:
-                                            yield f"data: {json.dumps({'type': 'text', 'content': context})}\n\n"
+                                            safe_context = _sanitize_output(context)
+                                            yield f"data: {json.dumps({'type': 'text', 'content': safe_context})}\n\n"
                                     except:
                                         pass
                             
@@ -282,8 +307,9 @@ async def chat_stream(request: ChatRequest):
                                     showed_tool_result = True
                                     follow_up = TOOL_FOLLOW_UPS.get(tool_name)
                                     if follow_up:
-                                        yield f"data: {json.dumps({'type': 'text', 'content': follow_up})}\n\n"
-                                        session.history.append({"role": "assistant", "text": follow_up})
+                                        safe_follow_up = _sanitize_output(follow_up)
+                                        yield f"data: {json.dumps({'type': 'text', 'content': safe_follow_up})}\n\n"
+                                        session.history.append({"role": "assistant", "text": safe_follow_up})
                     
                     if hasattr(data, 'text') and data.text:
                         text = data.text
@@ -383,9 +409,10 @@ async def chat_stream(request: ChatRequest):
             
             # Flush profile buffer if anything left
             if profile_buffer:
-                yield f"data: {json.dumps({'type': 'text', 'content': profile_buffer})}\n\n"
-                session.history.append({"role": "assistant", "text": profile_buffer})
-                profile_buffer = ""  # Clear buffer
+                            safe_buffer = _sanitize_output(profile_buffer)
+                            yield f"data: {json.dumps({'type': 'text', 'content': safe_buffer})}\n\n"
+                            session.history.append({"role": "assistant", "text": safe_buffer})
+                            profile_buffer = ""  # Clear buffer
             
             # Send final accumulated text if any (and no tool result was shown)
             # Skip if we already sent profile content
@@ -400,11 +427,13 @@ async def chat_stream(request: ChatRequest):
                 ]
                 should_block_final = any(p in response_text.lower() for p in final_block_patterns)
                 if not should_block_final:
-                    yield f"data: {json.dumps({'type': 'text', 'content': response_text})}\n\n"
-                    session.history.append({"role": "assistant", "text": response_text})
+                    safe_response = _sanitize_output(response_text)
+                    yield f"data: {json.dumps({'type': 'text', 'content': safe_response})}\n\n"
+                    session.history.append({"role": "assistant", "text": safe_response})
             elif fallback_blocked_text and not showed_tool_result:
-                yield f"data: {json.dumps({'type': 'text', 'content': fallback_blocked_text})}\n\n"
-                session.history.append({"role": "assistant", "text": fallback_blocked_text})
+                safe_fallback = _sanitize_output(fallback_blocked_text)
+                yield f"data: {json.dumps({'type': 'text', 'content': safe_fallback})}\n\n"
+                session.history.append({"role": "assistant", "text": safe_fallback})
             
         except Exception as e:
             logger.exception("Stream error")

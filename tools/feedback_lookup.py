@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from time import monotonic, sleep
 from typing import Optional
 
 from agent_framework.azure import AzureAISearchContextProvider
@@ -72,6 +73,17 @@ def _get_client() -> SearchClient:
             credential=_SEARCH_CREDENTIAL,
         )
 
+        # Register atexit to close the client on interpreter shutdown
+        import atexit
+        def _close_feedback_client() -> None:
+            global _CLIENT
+            if _CLIENT is not None:
+                try:
+                    _CLIENT.close()
+                except Exception:
+                    pass
+        atexit.register(_close_feedback_client)
+
     return _CLIENT
 
 
@@ -86,6 +98,8 @@ def build_feedback_context_provider(
     """Create an AzureAISearchContextProvider configured for the feedback index."""
 
     resolved_mode = (mode or os.getenv("AZURE_FEEDBACK_MODE") or "agentic").lower()
+    if os.getenv("AZURE_FEEDBACK_REQUIRE_AGENTIC", "").lower() == "true" and resolved_mode != "agentic":
+        raise FeedbackConfigError("AZURE_FEEDBACK_REQUIRE_AGENTIC is set but resolved mode is not agentic.")
     resolved_top_k = top_k or int(os.getenv("AZURE_FEEDBACK_TOP_K", os.getenv("AZURE_SEARCH_TOP_K", "4")))
     resolved_output_mode = output_mode or os.getenv(
         "AZURE_FEEDBACK_KB_OUTPUT_MODE",
@@ -186,24 +200,71 @@ _FEEDBACK_FIELDS = [
 ]
 
 
+# Lightweight in-memory caches for feedback lookups
+_CACHE_TTL_SECONDS = int(os.getenv("FEEDBACK_CACHE_TTL", os.getenv("AZURE_SEARCH_CACHE_TTL", "300")))
+_CACHE_EMAIL: dict[str, tuple[float, Optional[dict]]] = {}
+_CACHE_ID: dict[str, tuple[float, Optional[dict]]] = {}
+
+# Retry/backoff settings for Azure AI Search calls
+_SEARCH_RETRY_ATTEMPTS = int(os.getenv("FEEDBACK_SEARCH_RETRY_ATTEMPTS", os.getenv("AZURE_SEARCH_RETRY_ATTEMPTS", "3")))
+_SEARCH_RETRY_BACKOFF = float(os.getenv("FEEDBACK_SEARCH_RETRY_BACKOFF", os.getenv("AZURE_SEARCH_RETRY_BACKOFF", "0.5")))
+_SEARCH_TIMEOUT = float(os.getenv("FEEDBACK_SEARCH_TIMEOUT_SECONDS", os.getenv("AZURE_SEARCH_TIMEOUT_SECONDS", "10")))
+
+
 def _escape_filter_value(value: str) -> str:
     return value.replace("'", "''")
 
 
+def _cache_get(cache: dict[str, tuple[float, Optional[dict]]], key: str) -> Optional[dict]:
+    """Return cached value if not expired."""
+
+    entry = cache.get(key)
+    if not entry:
+        return None
+
+    expires_at, value = entry
+    if monotonic() > expires_at:
+        cache.pop(key, None)
+        return None
+    return value
+
+
+def _cache_set(cache: dict[str, tuple[float, Optional[dict]]], key: str, value: Optional[dict]) -> None:
+    if _CACHE_TTL_SECONDS <= 0:
+        return
+    cache[key] = (monotonic() + _CACHE_TTL_SECONDS, value)
+
+
+def _invalidate_cache(candidate_id: Optional[str] = None, candidate_email: Optional[str] = None) -> None:
+    if candidate_email:
+        _CACHE_EMAIL.pop(candidate_email, None)
+    if candidate_id:
+        _CACHE_ID.pop(candidate_id, None)
+
+
 def _query_feedback(filter_expression: str):
-    try:
-        client = _get_client()
-        results = client.search(
-            search_text="*",
-            filter=filter_expression,
-            order_by=["interview_date desc"],
-            select=_FEEDBACK_FIELDS,
-        )
-        return list(results)
-    except FeedbackConfigError:
-        raise
-    except Exception as exc:  # pragma: no cover - surfaced to the agent as a tool failure
-        raise FeedbackConfigError(f"Azure AI Search query failed: {exc}") from exc
+    client = _get_client()
+    last_exc = None
+
+    for attempt in range(_SEARCH_RETRY_ATTEMPTS):
+        try:
+            results = client.search(
+                search_text="*",
+                filter=filter_expression,
+                order_by=["interview_date desc"],
+                select=_FEEDBACK_FIELDS,
+                timeout=_SEARCH_TIMEOUT,
+            )
+            return list(results)
+        except FeedbackConfigError:
+            raise
+        except Exception as exc:  # pragma: no cover - surfaced to the agent as a tool failure
+            last_exc = exc
+            if attempt + 1 >= _SEARCH_RETRY_ATTEMPTS:
+                break
+            sleep(_SEARCH_RETRY_BACKOFF * (2**attempt))
+
+    raise FeedbackConfigError(f"Azure AI Search query failed after retries: {last_exc}") from last_exc
 
 
 def _serialize_history(history, *, default_email: Optional[str] = None, default_id: Optional[str] = None) -> dict:
@@ -254,6 +315,10 @@ def get_feedback_history(candidate_email: str) -> Optional[dict]:
     Returns:
         Dict with feedback history or None if no history
     """
+    cached = _cache_get(_CACHE_EMAIL, candidate_email)
+    if cached is not None:
+        return cached
+
     try:
         history = _query_feedback(
             f"candidate_email eq '{_escape_filter_value(candidate_email)}'"
@@ -262,9 +327,12 @@ def get_feedback_history(candidate_email: str) -> Optional[dict]:
         raise
 
     if not history:
+        _cache_set(_CACHE_EMAIL, candidate_email, None)
         return None
 
-    return _serialize_history(history, default_email=candidate_email)
+    payload = _serialize_history(history, default_email=candidate_email)
+    _cache_set(_CACHE_EMAIL, candidate_email, payload)
+    return payload
 
 
 def get_feedback_by_candidate_id(candidate_id: str) -> Optional[dict]:
@@ -276,6 +344,10 @@ def get_feedback_by_candidate_id(candidate_id: str) -> Optional[dict]:
     Returns:
         Dict with feedback history or None
     """
+    cached = _cache_get(_CACHE_ID, candidate_id)
+    if cached is not None:
+        return cached
+
     try:
         history = _query_feedback(
             f"candidate_id eq '{_escape_filter_value(candidate_id)}'"
@@ -284,9 +356,12 @@ def get_feedback_by_candidate_id(candidate_id: str) -> Optional[dict]:
         raise
 
     if not history:
+        _cache_set(_CACHE_ID, candidate_id, None)
         return None
 
-    return _serialize_history(history, default_id=candidate_id)
+    payload = _serialize_history(history, default_id=candidate_id)
+    _cache_set(_CACHE_ID, candidate_id, payload)
+    return payload
 
 
 def get_batch_feedback(candidate_emails: list[str]) -> dict[str, Optional[dict]]:
@@ -351,6 +426,9 @@ def add_feedback(
     }
 
     client.upload_documents(documents=[feedback])
+
+    # Invalidate caches so subsequent reads see the latest write
+    _invalidate_cache(candidate_id=candidate_id, candidate_email=candidate_email)
 
     return feedback
 

@@ -4,6 +4,12 @@ Demo scenario test - runs predefined conversation.
 """
 import asyncio
 import time
+import warnings
+
+# Suppress aiohttp unclosed session warnings (Azure SDK internal noise)
+warnings.filterwarnings("ignore", message="Unclosed client session")
+warnings.filterwarnings("ignore", message="Unclosed connector")
+
 from agents.factory import create_recruiting_workflow
 from agent_framework import (
     AgentRunUpdateEvent,
@@ -29,7 +35,7 @@ DEMO_SCRIPT = [
     "Hire a Data Engineer in Dubai",
     "Add Azure to the required skills",
     "yes",
-    "Check interview feedback for candidates 1 and 2",
+    "Check interview feedback for all candidates",
     "Send email to candidate 1",
 ]
 
@@ -108,4 +114,13 @@ async def run_demo():
     print(f"{C.H}{C.BOLD}{'='*70}{C.E}\n")
 
 if __name__ == "__main__":
+    import sys
+    import os
+
+    # Suppress aiohttp unclosed session warnings printed at shutdown
+    # by redirecting stderr to /dev/null during GC cleanup
     asyncio.run(run_demo())
+
+    # Flush and redirect stderr to suppress Azure SDK aiohttp noise
+    sys.stderr.flush()
+    sys.stderr = open(os.devnull, "w")

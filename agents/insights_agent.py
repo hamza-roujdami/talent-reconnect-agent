@@ -43,6 +43,12 @@ def lookup_feedback_by_emails(candidate_emails: list[str]) -> str:
     Returns:
         Formatted feedback summary for each candidate with history
     """
+    # Debug log to help trace mapping issues
+    try:
+        print(f"[insights] lookup_feedback_by_emails: {candidate_emails}")
+    except Exception:
+        pass
+
     results = []
     candidates_with_history = 0
     red_flags = 0
@@ -87,10 +93,20 @@ def lookup_feedback_by_ids(candidate_ids: list[str]) -> str:
     results = []
     candidates_with_history = 0
     red_flags = 0
+
+    # Debug log to help trace mapping issues between search results and feedback index
+    try:
+        print(f"[insights] lookup_feedback_by_ids: {candidate_ids}")
+    except Exception:
+        pass
     
     try:
         for cid in candidate_ids:
             feedback = get_feedback_by_candidate_id(cid)
+            # Fallback: if the "id" is actually an email, try email lookup
+            if not feedback and "@" in cid:
+                feedback = get_feedback_history(cid)
+
             if feedback:
                 candidates_with_history += 1
                 name = feedback.get("candidate_name", cid)
@@ -191,10 +207,10 @@ def create_insights_agent(chat_client) -> ChatAgent:
 
 Workflow:
 1. Look at the user's request (e.g., "check feedback for candidates 1 and 3").
-2. Call the feedback tool that matches what they provided:
-   - Use **lookup_feedback_by_ids** when they mention candidate numbers/IDs.
-   - Use **lookup_feedback_by_emails** when they provide emails or names with emails.
-   - Use **log_interview_feedback** only when they explicitly ask you to log new notes.
+2. Choose tools with this strict order of preference:
+    - **Always call lookup_feedback_by_emails** when emails are present in the context/list. Search results include a JSON block `<!-- CANDIDATE_DATA_START --> {"candidates": [{"candidate_id": "...", "email": "..."}]}` — extract the emails and use this tool by default.
+    - Use **lookup_feedback_by_ids** ONLY when the user explicitly provides real `Candidate ID: <doc-id>` values (the doc id from the `[doc-id†source]` citation or from the JSON block). Never treat positional numbers (1., 2., 3.) as IDs.
+    - Use **log_interview_feedback** only when they explicitly ask you to log new notes.
 3. After the tool response, provide a short recruiter-friendly summary highlighting:
    - Which candidates have history and how positive/negative it is.
    - Any ⚠️ red flags or 👍 past strong-hire signals.
@@ -203,5 +219,5 @@ Workflow:
 Tone: concise, conversational, actionable. Mention when no history is found so the recruiter knows to treat the candidate as net-new.
 """,
         context_providers=context_providers,
-        tools=[lookup_feedback_by_ids, lookup_feedback_by_emails, log_interview_feedback],
+        tools=[lookup_feedback_by_emails, lookup_feedback_by_ids, log_interview_feedback],
     )

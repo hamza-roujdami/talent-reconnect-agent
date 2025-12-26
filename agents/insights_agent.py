@@ -186,7 +186,12 @@ def log_interview_feedback(
     return f"✅ Feedback recorded for {candidate_name} ({candidate_email})\n" + summary
 
 
-def create_insights_agent(chat_client) -> ChatAgent:
+def create_insights_agent(
+    chat_client,
+    *,
+    middleware: list | None = None,
+    function_middleware: list | None = None,
+) -> ChatAgent:
     """Create the Insights Agent with feedback history tools.
     
     This agent:
@@ -194,6 +199,11 @@ def create_insights_agent(chat_client) -> ChatAgent:
     2. Highlights candidates with positive history (bonus)
     3. Flags candidates with previous no-hire recommendations
     4. Can record new interview feedback
+    
+    Args:
+        chat_client: The chat client to use
+        middleware: Agent-level middleware for logging/monitoring
+        function_middleware: Function-level middleware for tool calls
     """
     context_providers = []
     try:
@@ -203,6 +213,8 @@ def create_insights_agent(chat_client) -> ChatAgent:
 
     return chat_client.create_agent(
         name=INSIGHTS_AGENT_NAME,
+        middleware=middleware,
+        function_middleware=function_middleware,
         instructions="""You are the Candidate Insights specialist. Recruiters loop you in when they want to know whether shortlisted candidates have interview history, red flags, or warm references.
 
 Workflow:

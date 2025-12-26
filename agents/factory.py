@@ -6,10 +6,12 @@ Supports LLM providers:
 - azure_openai: Azure OpenAI (with Entra ID or API key auth)
 - compass: Compass/Core42 API
 """
+import os
 from pathlib import Path
 from config import config
 from tools.search_provider import build_search_context_provider, build_resume_search_provider, build_hybrid_agentic_provider
 from tools.outreach_email import send_outreach_email
+from agents.middleware import get_default_middleware
 
 
 def _load_instructions(name: str) -> str:
@@ -92,11 +94,32 @@ def create_recruiting_workflow():
     
     chat_client = _create_client()
     
-    # Create specialist agents
-    profile_agent = create_profile_agent(chat_client)
-    search_agent = create_search_agent(chat_client, context_provider=build_hybrid_agentic_provider())
-    insights_agent = create_insights_agent(chat_client)
-    outreach_agent = create_outreach_agent(chat_client)
+    # Get middleware (logging + error handling)
+    agent_middleware, function_middleware = get_default_middleware()
+    enable_middleware = os.getenv("ENABLE_MIDDLEWARE", "true").lower() == "true"
+    
+    # Create specialist agents with middleware
+    profile_agent = create_profile_agent(
+        chat_client,
+        middleware=agent_middleware if enable_middleware else None,
+        function_middleware=function_middleware if enable_middleware else None,
+    )
+    search_agent = create_search_agent(
+        chat_client,
+        context_provider=build_hybrid_agentic_provider(),
+        middleware=agent_middleware if enable_middleware else None,
+        function_middleware=function_middleware if enable_middleware else None,
+    )
+    insights_agent = create_insights_agent(
+        chat_client,
+        middleware=agent_middleware if enable_middleware else None,
+        function_middleware=function_middleware if enable_middleware else None,
+    )
+    outreach_agent = create_outreach_agent(
+        chat_client,
+        middleware=agent_middleware if enable_middleware else None,
+        function_middleware=function_middleware if enable_middleware else None,
+    )
     
     # Create orchestrator (coordinator agent)
     orchestrator = chat_client.create_agent(

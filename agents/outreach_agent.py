@@ -5,22 +5,37 @@ Has access to:
 - send_outreach_email: Draft and prepare emails for candidates
 - confirm_outreach_delivery: Mark the email as sent (simulated)
 """
+from typing import Optional
+
 from agent_framework import ChatAgent
 from tools.outreach_email import send_outreach_email, confirm_outreach_delivery
 
 OUTREACH_AGENT_NAME = "ConnectPilot"
 
 
-def create_outreach_agent(chat_client) -> ChatAgent:
+def create_outreach_agent(
+    chat_client,
+    *,
+    middleware: Optional[list] = None,
+    function_middleware: Optional[list] = None,
+) -> ChatAgent:
     """Create the Outreach Agent for candidate communication.
+    
     This agent:
     1. Takes selected candidates from user
     2. Drafts personalized recruitment emails
     3. Incorporates candidate background and job context
+    
+    Args:
+        chat_client: The chat client to use
+        middleware: Agent-level middleware for logging/monitoring
+        function_middleware: Function-level middleware for tool calls
     """
     return chat_client.create_agent(
         name=OUTREACH_AGENT_NAME,
         temperature=0.2,
+        middleware=middleware,
+        function_middleware=function_middleware,
         instructions="""You draft recruitment emails.
 
 ## Tools

@@ -21,6 +21,12 @@ aiohttp>=3.9.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 
+# Observability (OpenTelemetry) - optional
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp>=1.20.0
+# azure-monitor-opentelemetry>=1.0.0  # Uncomment for Azure Application Insights
+
 # Web UI (Chainlit - optional)
 chainlit>=1.0.0
 plotly>=5.0.0

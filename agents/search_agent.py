@@ -1,6 +1,8 @@
 """TalentScout (Search Agent) backed by Azure AI Search context."""
 from __future__ import annotations
 
+from typing import Optional
+
 from agent_framework import ChatAgent, ContextProvider
 from tools.search_provider import build_search_context_provider
 
@@ -11,14 +13,25 @@ def create_search_agent(
     chat_client,
     *,
     context_provider: ContextProvider | None = None,
+    middleware: Optional[list] = None,
+    function_middleware: Optional[list] = None,
 ) -> ChatAgent:
-    """Create the Search Agent grounded with Azure AI Search context."""
+    """Create the Search Agent grounded with Azure AI Search context.
+    
+    Args:
+        chat_client: The chat client to use
+        context_provider: Optional custom context provider
+        middleware: Agent-level middleware for logging/monitoring
+        function_middleware: Function-level middleware for tool calls
+    """
 
     provider = context_provider or build_search_context_provider()
 
     return chat_client.create_agent(
         name=SEARCH_AGENT_NAME,
         temperature=0.1,
+        middleware=middleware,
+        function_middleware=function_middleware,
         instructions="""You are a recruiting search specialist.
 
 Use the Azure AI Search context to surface highly relevant candidates. Present results as a numbered list (1., 2., 3., …) so the recruiter can reference them later.

@@ -7,21 +7,34 @@ Takes a job description or requirements and produces:
 - Filter parameters
 """
 from agent_framework import ChatAgent
+from typing import Optional
 
 PROFILE_AGENT_NAME = "RoleCrafter"
 
 
-def create_profile_agent(chat_client) -> ChatAgent:
+def create_profile_agent(
+    chat_client,
+    *,
+    middleware: Optional[list] = None,
+    function_middleware: Optional[list] = None,
+) -> ChatAgent:
     """Create the Profile Agent.
     
     This agent:
     1. Parses job requirements from user input
     2. Generates an "ideal candidate" profile
     3. Creates search-optimized queries and filters
+    
+    Args:
+        chat_client: The chat client to use
+        middleware: Agent-level middleware for logging/monitoring
+        function_middleware: Function-level middleware for tool calls
     """
     return chat_client.create_agent(
         name=PROFILE_AGENT_NAME,
         temperature=0.3,
+        middleware=middleware,
+        function_middleware=function_middleware,
         instructions="""You are a recruiting profile specialist. Turn hiring manager requests into polished, recruiter-ready job briefs that a TA can paste into a posting.
 
 Always respond with this structure EXACTLY ONCE:

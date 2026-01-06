@@ -1,18 +1,20 @@
 """
-Observability Configuration - OpenTelemetry Setup
+Observability Configuration - OpenTelemetry Setup for Azure AI Foundry
 
 Configures tracing, logging, and metrics for Talent Reconnect.
-Supports multiple exporters via environment variables:
+Supports Azure AI Foundry, Application Insights, and local exporters.
 
 Environment Variables:
-    OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (e.g., http://localhost:4317)
+    APPLICATIONINSIGHTS_CONNECTION_STRING: Azure App Insights connection (for Foundry tracing)
+    OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (e.g., http://localhost:4317 for Aspire)
     OTEL_SERVICE_NAME: Service name for traces (default: talent-reconnect)
-    APPLICATIONINSIGHTS_CONNECTION_STRING: Azure Application Insights connection
     ENABLE_CONSOLE_TRACING: Set to "true" for console trace output
+    ENABLE_INSTRUMENTATION: Set to "true" to enable MAF instrumentation
+    ENABLE_SENSITIVE_DATA: Set to "true" to include prompts/responses in traces
 
 Usage:
     from observability import configure_observability
-    configure_observability()  # Call once at startup
+    configure_observability()  # Call once at startup - auto-detects Foundry/AppInsights
 """
 import os
 import logging
@@ -32,6 +34,11 @@ def configure_observability(
 ) -> bool:
     """Configure OpenTelemetry observability for the application.
     
+    Auto-detects and configures:
+    1. Azure Application Insights (if APPLICATIONINSIGHTS_CONNECTION_STRING is set)
+    2. OTLP exporter (if OTEL_EXPORTER_OTLP_ENDPOINT is set, e.g., Aspire Dashboard)
+    3. Console output (if ENABLE_CONSOLE_TRACING=true or enable_console=True)
+    
     Args:
         service_name: Override service name (default: OTEL_SERVICE_NAME or 'talent-reconnect')
         enable_console: Enable console exporters for local debugging
@@ -46,16 +53,6 @@ def configure_observability(
         logger.debug("Observability already configured, skipping")
         return False
     
-    # Check if MAF observability module is available
-    try:
-        from agent_framework.observability import configure_otel_providers
-    except ImportError:
-        logger.warning(
-            "agent_framework.observability not available. "
-            "Install with: pip install agent-framework[observability]"
-        )
-        return False
-    
     # Resolve settings
     resolved_service_name = service_name or os.getenv("OTEL_SERVICE_NAME", "talent-reconnect")
     resolved_console = enable_console if enable_console is not None else (
@@ -65,6 +62,24 @@ def configure_observability(
     # Set service name env var if not already set (MAF reads this)
     if not os.getenv("OTEL_SERVICE_NAME"):
         os.environ["OTEL_SERVICE_NAME"] = resolved_service_name
+    
+    # Check for Azure Application Insights (Foundry tracing)
+    appinsights_conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+    if appinsights_conn:
+        success = _configure_azure_monitor(appinsights_conn, enable_sensitive_data)
+        if success:
+            _configured = True
+            return True
+    
+    # Fall back to standard OTLP/console configuration
+    try:
+        from agent_framework.observability import configure_otel_providers
+    except ImportError:
+        logger.warning(
+            "agent_framework.observability not available. "
+            "Install with: pip install agent-framework"
+        )
+        return False
     
     try:
         # Configure OpenTelemetry via MAF
@@ -76,17 +91,44 @@ def configure_observability(
         
         # Log configuration summary
         otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-        appinsights = bool(os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"))
         
         logger.info(
             f"📊 Observability configured | service={resolved_service_name} | "
-            f"console={resolved_console} | otlp={'✓' if otlp_endpoint else '✗'} | "
-            f"appinsights={'✓' if appinsights else '✗'}"
+            f"console={resolved_console} | otlp={'✓' if otlp_endpoint else '✗'}"
         )
         return True
         
     except Exception as e:
         logger.warning(f"Failed to configure observability: {e}")
+        return False
+
+
+def _configure_azure_monitor(connection_string: str, enable_sensitive_data: bool = False) -> bool:
+    """Internal: Configure Azure Monitor/Application Insights."""
+    try:
+        from azure.monitor.opentelemetry import configure_azure_monitor as azure_configure
+        from agent_framework.observability import create_resource, enable_instrumentation
+        
+        # Disable features that cause issues on macOS
+        azure_configure(
+            connection_string=connection_string,
+            resource=create_resource(),
+            enable_live_metrics=False,  # Avoid performance counter issues on macOS
+            logger_name="talent-reconnect",  # Only capture our logs
+        )
+        enable_instrumentation(enable_sensitive_data=enable_sensitive_data)
+        
+        logger.info("📊 Azure Monitor configured (Application Insights + Foundry tracing)")
+        return True
+        
+    except ImportError:
+        logger.warning(
+            "azure-monitor-opentelemetry not installed. "
+            "Install with: pip install azure-monitor-opentelemetry"
+        )
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to configure Azure Monitor: {e}")
         return False
 
 
@@ -108,25 +150,4 @@ def configure_azure_monitor(connection_string: Optional[str] = None) -> bool:
         )
         return False
     
-    try:
-        from azure.monitor.opentelemetry import configure_azure_monitor as azure_configure
-        from agent_framework.observability import create_resource, enable_instrumentation
-        
-        azure_configure(
-            connection_string=conn_str,
-            resource=create_resource(),
-        )
-        enable_instrumentation(enable_sensitive_data=False)
-        
-        logger.info("📊 Azure Monitor configured for Application Insights")
-        return True
-        
-    except ImportError:
-        logger.warning(
-            "azure-monitor-opentelemetry not installed. "
-            "Install with: pip install azure-monitor-opentelemetry"
-        )
-        return False
-    except Exception as e:
-        logger.warning(f"Failed to configure Azure Monitor: {e}")
-        return False
+    return _configure_azure_monitor(conn_str)

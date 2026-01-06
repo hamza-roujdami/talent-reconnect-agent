@@ -1,10 +1,11 @@
 """
 FastAPI routes for Talent Reconnect API.
 
-Multi-agent workflow with streaming support.
+Multi-agent workflow with streaming support and checkpointing.
 """
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -24,12 +25,15 @@ from agent_framework import (
     WorkflowOutputEvent,
     RequestInfoEvent,
     HandoffUserInputRequest,
+    FileCheckpointStorage,
+    InMemoryCheckpointStorage,
 )
 from agents.factory import create_recruiting_workflow
 from config import config
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent.parent / "static"
+CHECKPOINT_DIR = Path(__file__).parent.parent / ".checkpoints"
 
 PROFILE_AGENT_NAME = "RoleCrafter"
 SEARCH_AGENT_NAME = "TalentScout"
@@ -91,12 +95,30 @@ class ChatResponse(BaseModel):
 
 PENDING_REQUEST_TTL = timedelta(minutes=2)
 
+# Checkpoint storage (shared across sessions for persistence)
+_checkpoint_storage = None
+
+
+def _get_checkpoint_storage():
+    """Get or create checkpoint storage."""
+    global _checkpoint_storage
+    if _checkpoint_storage is None:
+        use_file_checkpoints = os.getenv("ENABLE_CHECKPOINTING", "true").lower() == "true"
+        if use_file_checkpoints:
+            CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+            _checkpoint_storage = FileCheckpointStorage(storage_path=CHECKPOINT_DIR)
+            logger.info(f"📁 Checkpointing enabled: {CHECKPOINT_DIR}")
+        else:
+            _checkpoint_storage = InMemoryCheckpointStorage()
+            logger.info("💾 Checkpointing enabled: in-memory")
+    return _checkpoint_storage
+
 
 class Session:
     """User session with multi-agent workflow."""
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.workflow = create_recruiting_workflow()
+        self.workflow = create_recruiting_workflow(checkpoint_storage=_get_checkpoint_storage())
         self.pending_requests: List[Tuple[HandoffUserInputRequest, datetime]] = []
         self.history: List[dict] = []  # For UI display
         self.title: Optional[str] = None
@@ -134,9 +156,14 @@ def _prune_pending_requests(session: Session) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and cleanup."""
+    # Initialize checkpoint storage
+    storage = _get_checkpoint_storage()
+    checkpoint_type = "file" if isinstance(storage, FileCheckpointStorage) else "memory"
+    
     print("🔧 Initializing Talent Reconnect - Multi-Agent Mode")
     print(f"✅ Agents: Orchestrator → Profile → Search → Insights → Outreach")
     print(f"✅ Resume database: Azure AI Search ({config.search.index})")
+    print(f"✅ Checkpointing: {checkpoint_type}")
     print(f"🤖 Model: {config.llm.model}")
     print(f"🌐 Server: http://localhost:8000\n")
     yield

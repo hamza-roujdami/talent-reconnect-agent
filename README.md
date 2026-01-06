@@ -40,8 +40,26 @@ AI-powered Talent Acquisition Agent using **Microsoft Agent Framework (MAF)** an
 - **Search context** comes from custom helper modules in [tools/search_provider.py](tools/search_provider.py#L1-L116) and [tools/feedback_lookup.py](tools/feedback_lookup.py#L1-L252). They wrap `AzureAISearchContextProvider` (semantic or agentic modes) and hydrate the Resume + Feedback indexes with the data scripts in [data/](data/README.md).
 - **Tools** (e.g., `send_outreach_email`, `lookup_feedback_by_ids`) live in [tools/outreach_email.py](tools/outreach_email.py) and the insights helpers. They’re regular Python callables exposed to the Agent Framework so LLM responses can invoke them deterministically.
 - **API + UI** are served via FastAPI (`main.py` + [api/routes.py](api/routes.py)) with Server-Sent Events streaming into [static/index.html](static/index.html). Pending-request TTLs and the scripted demo panel keep the workflow predictable for exec demos.
-- **Tests/Demos** run straight against the workflow: [tests/demo_test.py](tests/demo_test.py) replays the six-step scenario, while [tests/test_workflow.py](tests/test_workflow.py) exposes a CLI REPL for observing agent/tool hops.
+- **Tests/Demos** run straight against the workflow: [tests/test_demo.py](tests/test_demo.py) replays the five-step scenario, while [tests/test_agents.py](tests/test_agents.py) covers unit tests for agent wiring.
+- **Checkpointing** is enabled via MAF's `FileCheckpointStorage`. Workflow state persists to `.checkpoints/` so conversations can survive server restarts (see `api/routes.py`).
+- **Observability** sends traces and dependencies to Azure Application Insights via OpenTelemetry (see `observability.py`).
 
+---
+
+## Observability
+
+Telemetry is sent to Azure Application Insights when `APPLICATIONINSIGHTS_CONNECTION_STRING` is set in `.env`.
+
+**What's captured:**
+- **Traces** – Agent activity, handoffs, tool calls
+- **Dependencies** – Azure AI Search queries, LLM requests
+
+**View in Azure Portal:**
+1. Go to your Application Insights resource
+2. **Transaction search** → Filter by `traces` or `dependencies`
+3. **Application map** → See service dependencies visually
+
+**Disable:** Remove `APPLICATIONINSIGHTS_CONNECTION_STRING` from `.env` or leave it empty.
 
 ---
 
@@ -85,9 +103,10 @@ cp .env.example .env  # Edit with your credentials
 python chat_multi.py        # Multi-agent terminal chat
 python main.py              # FastAPI server + browser UI on :8000
 
-# Optional CLI demo/test harnesses
-python tests/demo_test.py   # Scripted six-step hiring demo
-python tests/test_workflow.py   # Interactive workflow debugger
+# Tests
+python tests/test_demo.py              # Scripted 5-step hiring demo
+pytest tests/test_agents.py -v         # Agent unit tests
+pytest tests/test_search.py -v         # Search integration tests (requires Azure)
 ```
 
 ---
@@ -96,6 +115,7 @@ python tests/test_workflow.py   # Interactive workflow debugger
 
 ```
 talent-reconnect-agent/
+├── .checkpoints/           # Workflow state persistence (ignored in git)
 ├── chat_multi.py           # Multi-agent terminal chat
 ├── main.py                 # FastAPI server
 ├── agents/
@@ -109,10 +129,13 @@ talent-reconnect-agent/
 │   ├── 06-resumes-agentic-harness.py    # resumes agentic validation
 │   ├── 07-feedback-semantic-harness.py  # feedback semantic validation
 │   └── 08-feedback-agentic-harness.py   # feedback agentic validation
-├── tests/                  # Demo + debugging harnesses
-│   ├── demo_test.py        # scripted end-to-end demo
-│   ├── test_workflow.py    # interactive multi-agent REPL
-│   └── debug_tools.py      # utility to inspect registered tools
+├── tests/                  # Test suite
+│   ├── conftest.py         # pytest fixtures
+│   ├── test_demo.py        # scripted 5-step hiring demo
+│   ├── test_agents.py      # agent unit tests
+│   ├── test_search.py      # search integration tests
+│   ├── test_api.py         # API endpoint tests
+│   └── utils/              # test utilities
 ├── tools/
 │   ├── search_provider.py  # Azure AI Search provider helpers
 │   ├── feedback_lookup.py  # Feedback lookup

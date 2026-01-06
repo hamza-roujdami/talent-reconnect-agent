@@ -74,7 +74,7 @@ def create_recruiter():
     )
 
 
-def create_recruiting_workflow():
+def create_recruiting_workflow(checkpoint_storage=None):
     """Create multi-agent recruiting workflow (advanced mode).
     
     Uses MAF HandoffBuilder for dynamic routing between specialists:
@@ -83,6 +83,11 @@ def create_recruiting_workflow():
     - SearchAgent: Searches Azure AI Search
     - InsightsAgent: Checks interview history & feedback
     - OutreachAgent: Drafts personalized emails
+    
+    Args:
+        checkpoint_storage: Optional checkpoint storage for workflow persistence.
+            Use FileCheckpointStorage or InMemoryCheckpointStorage from agent_framework.
+            If None, checkpointing is disabled.
     
     Returns a Workflow that can be run with workflow.run_stream(messages).
     """
@@ -149,7 +154,7 @@ CRITICAL:
     # - set_coordinator: The orchestrator receives all user input first
     # - add_handoff: Enable routing (MUST include orchestrator's routes!)
     # NOTE: profile_agent does NOT have handoff to search - user must approve via orchestrator
-    workflow = (
+    builder = (
         HandoffBuilder(
             name="recruiting_workflow",
             participants=[orchestrator, profile_agent, search_agent, insights_agent, outreach_agent],
@@ -157,7 +162,10 @@ CRITICAL:
         .set_coordinator(orchestrator)
         # Orchestrator exclusively routes user intent to the right specialist
         .add_handoff(orchestrator, [profile_agent, search_agent, insights_agent, outreach_agent])
-        .build()
     )
     
-    return workflow
+    # Enable checkpointing if storage provided
+    if checkpoint_storage is not None:
+        builder = builder.with_checkpointing(checkpoint_storage)
+    
+    return builder.build()

@@ -39,6 +39,9 @@ ENV/
 .env
 .env.local
 
+# Checkpoints (workflow state persistence)
+.checkpoints/
+
 # Microsoft Agent Framework samples (for reference only)
 learn/
 

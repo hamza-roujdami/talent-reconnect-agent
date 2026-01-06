@@ -21,11 +21,11 @@ aiohttp>=3.9.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 
-# Observability (OpenTelemetry) - optional
+# Observability (OpenTelemetry) - for Azure AI Foundry tracing
 opentelemetry-api>=1.20.0
 opentelemetry-sdk>=1.20.0
 opentelemetry-exporter-otlp>=1.20.0
-# azure-monitor-opentelemetry>=1.0.0  # Uncomment for Azure Application Insights
+azure-monitor-opentelemetry>=1.0.0  # Required for Foundry/App Insights tracing
 
 # Web UI (Chainlit - optional)
 chainlit>=1.0.0

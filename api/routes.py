@@ -344,6 +344,10 @@ async def chat_stream(request: ChatRequest):
                         if showed_tool_result:
                             continue
                         
+                        # Hide candidate data JSON blocks
+                        if '<!-- CANDIDATE_DATA' in text or 'CANDIDATE_DATA_END' in text:
+                            continue
+                        
                         block_patterns = [
                             'let me know',
                             'anything else',
@@ -355,6 +359,8 @@ async def chat_stream(request: ChatRequest):
                             'would you like',
                             'i can help',
                             'seems there is no',
+                            'it seems there are no',
+                            'no candidates',
                             'it seems',
                             'handoff',
                             'handed',
@@ -406,8 +412,25 @@ async def chat_stream(request: ChatRequest):
                             'transfer',
                             'handling',
                             'expert assistance',
+                            # Waiting/searching messages that cause extra confirmation
+                            'hold on',
+                            'please wait',
+                            'searching',
+                            'gathering',
+                            'looking for',
+                            'moment while',
+                            'one moment',
+                            'just a moment',
+                            'i\'ll now search',
+                            'i will now search',
+                            'let me search',
+                            'searching now',
                         ]
                         should_block = any(p in text.lower() for p in block_patterns)
+                        
+                        # Also block if text contains hidden data markers
+                        if 'CANDIDATE_DATA' in text or '{"candidates"' in text:
+                            continue
                         
                         if agent_name == PROFILE_AGENT_NAME:
                             if not should_block:

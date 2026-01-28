@@ -1,20 +1,16 @@
-"""Search Quality Evaluation using Azure AI Search context grounding."""
-import asyncio
+"""
+Search Quality Evaluation
+
+Tests search tool quality using the candidate_search tool directly.
+"""
 import json
 import sys
 from pathlib import Path
 
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureOpenAIChatClient
-from azure.identity import DefaultAzureCredential
-
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import config
-from tools.search_provider import build_search_context_provider
-
-API_VERSION = "2024-10-21"
+from tools.candidate_search import search_candidates
 
 
 def load_golden_dataset():
@@ -26,7 +22,6 @@ def load_golden_dataset():
 
 def extract_skills_from_result(result_text: str) -> set:
     """Extract skills mentioned in a search result."""
-    # Simple keyword extraction - in production use NER
     common_skills = [
         "python", "javascript", "typescript", "react", "node.js", "nodejs",
         "aws", "azure", "gcp", "docker", "kubernetes", "k8s",
@@ -35,6 +30,8 @@ def extract_skills_from_result(result_text: str) -> set:
         "sql", "postgresql", "mongodb", "redis",
         "nlp", "transformers", "bert", "gpt",
         "java", "go", "rust", "c++",
+        "scala", "spark", "hadoop", "airflow",
+        "pandas", "keras", "langchain", "snowflake",
     ]
     result_lower = result_text.lower()
     return {skill for skill in common_skills if skill in result_lower}
@@ -42,7 +39,7 @@ def extract_skills_from_result(result_text: str) -> set:
 
 def calculate_precision(results: str, expected_skills: list) -> float:
     """Calculate precision based on skill overlap."""
-    if not results or results == "No matching candidates found.":
+    if not results or "no matching candidates" in results.lower():
         return 0.0
     
     expected_set = {s.lower() for s in expected_skills}
@@ -55,95 +52,52 @@ def calculate_precision(results: str, expected_skills: list) -> float:
     return len(overlap) / len(expected_set) if expected_set else 0.0
 
 
-def _create_chat_client() -> AzureOpenAIChatClient:
-    llm = config.llm
-    if llm.provider != "azure_openai":
-        raise RuntimeError("Search quality eval requires Azure OpenAI configuration.")
-
-    if llm.use_entra_id:
-        credential = DefaultAzureCredential()
-        return AzureOpenAIChatClient(
-            endpoint=llm.azure_endpoint,
-            deployment_name=llm.azure_deployment,
-            credential=credential,
-            api_version=API_VERSION,
-        )
-
-    if not llm.api_key:
-        raise RuntimeError("AZURE_OPENAI_KEY is required when not using Entra ID auth.")
-
-    return AzureOpenAIChatClient(
-        endpoint=llm.azure_endpoint,
-        deployment_name=llm.azure_deployment,
-        api_key=llm.api_key,
-        api_version=API_VERSION,
-    )
-
-
-async def semantic_search_response(prompt: str) -> str:
-    provider = build_search_context_provider()
-    async with provider:
-        chat_client = _create_chat_client()
-        agent: ChatAgent = chat_client.create_agent(
-            name="search_eval_probe",
-            instructions=(
-                "You are evaluating resume relevance. Answer using the Azure AI Search "
-                "context and include short bullet points with citations."
-            ),
-            temperature=0.2,
-            context_providers=[provider],
-        )
-
-        chunks: list[str] = []
-        async for event in agent.run_stream(prompt):
-            if hasattr(event, "text") and event.text:
-                chunks.append(event.text)
-
-        return "".join(chunks).strip()
-
-
-async def run_semantic_batch(queries: list[str]) -> list[str]:
-    responses: list[str] = []
-    for query in queries:
-        responses.append(await semantic_search_response(query))
-    return responses
-
-
 def run_search_eval():
-    """Run search quality evaluation using semantic grounding."""
+    """Run search quality evaluation."""
     print("=" * 60)
     print("Search Quality Evaluation")
     print("=" * 60)
 
     dataset = load_golden_dataset()
-    queries = dataset["search_queries"]
+    queries = dataset.get("search_queries", [])
+    
+    if not queries:
+        print("\n⚠️ No search_queries found in golden_dataset.json")
+        return {"avg_precision": 0}
 
-    prompts = [q["query"] for q in queries]
-    semantic_results = asyncio.run(run_semantic_batch(prompts))
+    scores = []
 
-    semantic_scores = []
-
-    for query_data, result_text in zip(queries, semantic_results):
+    for query_data in queries:
         query = query_data["query"]
         expected_skills = query_data["relevant_skills"]
 
         print(f"\n📝 Query: {query}")
         print(f"   Expected skills: {', '.join(expected_skills)}")
 
-        semantic_precision = calculate_precision(result_text, expected_skills)
-        semantic_scores.append(semantic_precision)
+        # Run search
+        result = search_candidates(query, top_k=10)
+        
+        precision = calculate_precision(result, expected_skills)
+        scores.append(precision)
 
-        print(f"   Semantic Precision: {semantic_precision:.0%}")
+        print(f"   Precision: {precision:.0%}")
+        
+        # Show found skills
+        found = extract_skills_from_result(result)
+        if found:
+            print(f"   Found: {', '.join(sorted(found))}")
 
-    avg_semantic = sum(semantic_scores) / len(semantic_scores) if semantic_scores else 0
+    avg_precision = sum(scores) / len(scores) if scores else 0
 
     print("\n" + "=" * 60)
     print("Summary")
     print("=" * 60)
-    print(f"Average Semantic Precision: {avg_semantic:.0%}")
+    print(f"Average Precision: {avg_precision:.0%}")
+    print(f"Queries Tested: {len(scores)}")
 
     return {
-        "semantic_avg_precision": avg_semantic,
+        "avg_precision": avg_precision,
+        "queries_tested": len(scores),
     }
 
 

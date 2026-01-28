@@ -15,8 +15,6 @@ from agent_framework import (
     AgentRunContext,
     FunctionMiddleware,
     FunctionInvocationContext,
-    AgentRunResponse,
-    AgentRunResponseUpdate,
 )
 
 logger = logging.getLogger("talent_reconnect.middleware")

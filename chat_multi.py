@@ -13,14 +13,14 @@ from typing import cast
 from agents.factory import create_recruiting_workflow
 from agent_framework import (
     ChatMessage,
+    Content,
+    Role,
     WorkflowOutputEvent,
     WorkflowStatusEvent,
     WorkflowRunState,
-    HandoffUserInputRequest,
+    HandoffAgentUserRequest,
     RequestInfoEvent,
     AgentRunUpdateEvent,
-    FunctionCallContent,
-    FunctionResultContent,
 )
 
 # Parse arguments
@@ -37,6 +37,7 @@ async def process_stream(stream):
     seen_agents = set()
     seen_tools = set()
     response_text = ""
+    showed_tool_result = False  # Track if we showed a substantial tool result
     
     async for event in stream:
         if VERBOSE and isinstance(event, WorkflowStatusEvent):
@@ -53,16 +54,19 @@ async def process_stream(stream):
             data = event.data
             if hasattr(data, 'contents') and data.contents:
                 for item in data.contents:
-                    if isinstance(item, FunctionCallContent) and item.name:
+                    if isinstance(item, Content) and item.type == 'function_call' and item.name:
                         if not item.name.startswith('handoff_') and item.name not in seen_tools:
                             seen_tools.add(item.name)
                             print(f"🔧 {item.name}", flush=True)
-                    if isinstance(item, FunctionResultContent) and item.result:
+                    if isinstance(item, Content) and item.type == 'function_result' and item.result:
                         result_str = str(item.result)
+                        # Show substantial tool output (tables, candidates, emails)
                         if len(result_str) > 50 and 'handoff_to' not in result_str:
                             print(f"\n{result_str}\n", flush=True)
+                            showed_tool_result = True
             
-            if hasattr(data, 'text') and data.text:
+            # Only accumulate text if we haven't shown a tool result
+            if hasattr(data, 'text') and data.text and not showed_tool_result:
                 response_text += data.text
         
         # Collect pending user input requests
@@ -73,8 +77,8 @@ async def process_stream(stream):
         if isinstance(event, WorkflowOutputEvent):
             pass  # Already handled via AgentRunUpdateEvent
     
-    # Print accumulated text response
-    if response_text:
+    # Print accumulated text response only if no tool result was shown
+    if response_text and not showed_tool_result:
         print(f"\n{response_text}", flush=True)
     
     return pending_requests
@@ -90,29 +94,29 @@ async def chat():
     
     # Create workflow
     workflow = create_recruiting_workflow()
+    pending_requests = []
     
-    # Get initial user input
-    user_input = input("You: ").strip()
-    if user_input.lower() == "quit":
-        print("\nGoodbye! 👋")
-        return
-    
-    # Start workflow with initial message
-    pending_requests = await process_stream(workflow.run_stream(user_input))
-    
-    # Continue conversation loop
-    while pending_requests:
+    # Main conversation loop
+    while True:
         try:
-            user_input = input("\nYou: ").strip()
+            user_input = input("You: ").strip()
             if not user_input:
                 continue
             if user_input.lower() == "quit":
                 print("\nGoodbye! 👋")
                 break
             
-            # Send response to all pending requests
-            responses = {req.request_id: user_input for req in pending_requests}
-            pending_requests = await process_stream(workflow.send_responses_streaming(responses))
+            # Choose workflow method based on pending requests
+            if pending_requests:
+                # Send response to pending requests - wrap in ChatMessage
+                responses = {
+                    req.request_id: [ChatMessage(role=Role.USER, text=user_input)]
+                    for req in pending_requests
+                }
+                pending_requests = await process_stream(workflow.send_responses_streaming(responses))
+            else:
+                # Start new workflow run
+                pending_requests = await process_stream(workflow.run_stream(user_input))
             
         except KeyboardInterrupt:
             print("\n\nGoodbye! 👋")

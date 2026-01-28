@@ -7,7 +7,7 @@ This agent:
 3. Highlights previous wins / no-hire red flags
 4. Summarizes whether it is safe to move forward
 
-Feedback is stored in Azure AI Search 'feedback' index.
+Uses tool-based approach for reliable Azure AI Search queries in workflows.
 """
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from agent_framework import ChatAgent
 from tools.feedback_lookup import (
     FeedbackConfigError,
     add_feedback,
-    build_feedback_context_provider,
     format_feedback_summary,
     get_feedback_by_candidate_id,
     get_feedback_history,
@@ -194,42 +193,53 @@ def create_insights_agent(
 ) -> ChatAgent:
     """Create the Insights Agent with feedback history tools.
     
-    This agent:
-    1. Fetches interview feedback for candidates from Azure AI Search
-    2. Highlights candidates with positive history (bonus)
-    3. Flags candidates with previous no-hire recommendations
-    4. Can record new interview feedback
+    This agent uses tool-based approach (same as TalentScout) because
+    context providers don't receive full conversation context in handoff workflows.
+    
+    Tools:
+    - lookup_feedback_by_emails: Fetch feedback by candidate emails
+    - lookup_feedback_by_ids: Fetch feedback by candidate IDs
+    - log_interview_feedback: Record new interview feedback
     
     Args:
         chat_client: The chat client to use
         middleware: Agent-level middleware for logging/monitoring
         function_middleware: Function-level middleware for tool calls
     """
-    context_providers = []
-    try:
-        context_providers.append(build_feedback_context_provider())
-    except FeedbackConfigError:
-        context_providers = []
+    # Combine middleware lists for new API
+    all_middleware = []
+    if middleware:
+        all_middleware.extend(middleware)
+    if function_middleware:
+        all_middleware.extend(function_middleware)
 
-    return chat_client.create_agent(
+    return chat_client.as_agent(
         name=INSIGHTS_AGENT_NAME,
-        middleware=middleware,
-        function_middleware=function_middleware,
-        instructions="""You are the Candidate Insights specialist. Recruiters loop you in when they want to know whether shortlisted candidates have interview history, red flags, or warm references.
-
-Workflow:
-1. Look at the user's request (e.g., "check feedback for candidates 1 and 3").
-2. Choose tools with this strict order of preference:
-    - **Always call lookup_feedback_by_emails** when emails are present in the context/list. Search results include a JSON block `<!-- CANDIDATE_DATA_START --> {"candidates": [{"candidate_id": "...", "email": "..."}]}` — extract the emails and use this tool by default.
-    - Use **lookup_feedback_by_ids** ONLY when the user explicitly provides real `Candidate ID: <doc-id>` values (the doc id from the `[doc-id†source]` citation or from the JSON block). Never treat positional numbers (1., 2., 3.) as IDs.
-    - Use **log_interview_feedback** only when they explicitly ask you to log new notes.
-3. After the tool response, provide a short recruiter-friendly summary highlighting:
-   - Which candidates have history and how positive/negative it is.
-   - Any ⚠️ red flags or 👍 past strong-hire signals.
-   - A clear recommendation for next steps (e.g., "Greenlight candidates 1 & 2; avoid 3 due to past no-hire").
-
-Tone: concise, conversational, actionable. Mention when no history is found so the recruiter knows to treat the candidate as net-new.
-""",
-        context_providers=context_providers,
+        middleware=all_middleware or None,
         tools=[lookup_feedback_by_emails, lookup_feedback_by_ids, log_interview_feedback],
+        instructions="""You are InsightPulse, the Candidate Insights specialist.
+
+IMPORTANT: You MUST call one of your tools to get feedback. Do NOT make up feedback data.
+
+WORKFLOW:
+1. Look at the conversation for candidate emails or IDs
+2. Call the appropriate tool:
+   - lookup_feedback_by_emails: Use when you have emails (most common)
+   - lookup_feedback_by_ids: Use when you have candidate IDs like "gen-001234"
+   - log_interview_feedback: Only when user asks to record new feedback
+3. Present the results clearly
+
+OUTPUT FORMAT:
+After getting tool results, summarize:
+- 👍 Candidates with positive history (hire/strong_hire recommendations)
+- ⚠️ Red flags (no_hire recommendations or concerns)
+- 📝 Candidates with no prior history (treat as new)
+
+End with: "Ready for outreach? Say 'email candidate 1' to draft a message."
+
+RULES:
+- ALWAYS call a tool - never skip or make up data
+- Extract emails from the conversation context (look for @gmail.com, @outlook.com, etc.)
+- Real candidate IDs look like "gen-XXXXXX"
+""",
     )

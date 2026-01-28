@@ -158,7 +158,8 @@ def generate_resume(resume_id: int) -> Dict:
     job_title = random.choice(JOB_TITLES[category])
     
     name = fake.name()
-    email = f"{name.lower().replace(' ', '.').replace(\"'\", '')}@{random.choice(['gmail.com', 'outlook.com', 'yahoo.com'])}"
+    clean_name = name.lower().replace(' ', '.').replace("'", "")
+    email = f"{clean_name}@{random.choice(['gmail.com', 'outlook.com', 'yahoo.com'])}"
     
     location = weighted_choice(LOCATIONS)
     company = weighted_choice(COMPANIES)

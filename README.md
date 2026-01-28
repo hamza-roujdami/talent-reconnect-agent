@@ -37,8 +37,8 @@ AI-powered Talent Acquisition Agent using **Microsoft Agent Framework (MAF)** an
 
 **Under the hood**
 - **Agents** are instantiated via Microsoft Agent Framework’s `HandoffBuilder` on top of Foundry’s GPT‑4o mini deployment. Each specialist carries purpose-built instructions plus zero- or low-temperature sampling so they stay deterministic during the demo.
-- **Search context** comes from custom helper modules in [tools/search_provider.py](tools/search_provider.py#L1-L116) and [tools/feedback_lookup.py](tools/feedback_lookup.py#L1-L252). They wrap `AzureAISearchContextProvider` (semantic or agentic modes) and hydrate the Resume + Feedback indexes with the data scripts in [data/](data/README.md).
-- **Tools** (e.g., `send_outreach_email`, `lookup_feedback_by_ids`) live in [tools/outreach_email.py](tools/outreach_email.py) and the insights helpers. They’re regular Python callables exposed to the Agent Framework so LLM responses can invoke them deterministically.
+- **Search context** comes from tool-based Azure AI Search integration. The `search_candidates` tool in [tools/candidate_search.py](tools/candidate_search.py) queries the Resume index, while [tools/feedback_lookup.py](tools/feedback_lookup.py) handles Feedback lookups. Data is hydrated via scripts in [data/](data/README.md).
+- **Tools** (e.g., `search_candidates`, `send_outreach_email`, `lookup_feedback_by_ids`) live in the [tools/](tools/) directory. They're regular Python callables exposed to the Agent Framework so LLM responses can invoke them deterministically.
 - **API + UI** are served via FastAPI (`main.py` + [api/routes.py](api/routes.py)) with Server-Sent Events streaming into [static/index.html](static/index.html). Pending-request TTLs and the scripted demo panel keep the workflow predictable for exec demos.
 - **Tests/Demos** run straight against the workflow: [tests/test_demo.py](tests/test_demo.py) replays the five-step scenario, while [tests/test_agents.py](tests/test_agents.py) covers unit tests for agent wiring.
 - **Checkpointing** is enabled via MAF's `FileCheckpointStorage`. Workflow state persists to `.checkpoints/` so conversations can survive server restarts (see `api/routes.py`).
@@ -137,9 +137,40 @@ talent-reconnect-agent/
 │   ├── test_api.py         # API endpoint tests
 │   └── utils/              # test utilities
 ├── tools/
-│   ├── search_provider.py  # Azure AI Search provider helpers
+│   ├── candidate_search.py # Azure AI Search candidate lookup
 │   ├── feedback_lookup.py  # Feedback lookup
 │   └── outreach_email.py   # Outreach drafts
+```
+
+---
+
+## Demo Script
+
+Copy and paste these prompts in order to test the full workflow:
+
+```bash
+# Start the CLI
+python chat_multi.py
+```
+
+| Step | Prompt | Agent |
+|------|--------|-------|
+| 1️⃣ Define role | `Hire a Data Engineer in Dubai` | RoleCrafter |
+| 2️⃣ Refine | `Add Azure to the required skills` | RoleCrafter |
+| 3️⃣ Approve | `yes` | TalentScout |
+| 4️⃣ Details | `Show details for candidates 1, 2 and 3` | TalentScout |
+| 5️⃣ Feedback | `Check interview feedback for candidates 1 and 2` | InsightPulse |
+| 6️⃣ Outreach | `Send email to candidate 1` | ConnectPilot |
+
+**Raw prompts (copy all):**
+```
+Hire a Data Engineer in Dubai
+Add Azure to the required skills
+yes
+Show details for candidates 1, 2 and 3
+Check interview feedback for candidates 1 and 2
+Send email to candidate 1
+quit
 ```
 
 ---

@@ -30,11 +30,17 @@ def create_profile_agent(
         middleware: Agent-level middleware for logging/monitoring
         function_middleware: Function-level middleware for tool calls
     """
-    return chat_client.create_agent(
+    # Combine middleware lists for new API
+    all_middleware = []
+    if middleware:
+        all_middleware.extend(middleware)
+    if function_middleware:
+        all_middleware.extend(function_middleware)
+    
+    return chat_client.as_agent(
         name=PROFILE_AGENT_NAME,
-        temperature=0.3,
-        middleware=middleware,
-        function_middleware=function_middleware,
+        default_options={"temperature": 0.3},
+        middleware=all_middleware or None,
         instructions="""You are a recruiting profile specialist. Turn hiring manager requests into polished, recruiter-ready job briefs that a TA can paste into a posting.
 
 Always respond with this structure EXACTLY ONCE:

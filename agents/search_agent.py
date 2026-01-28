@@ -1,10 +1,12 @@
-"""TalentScout (Search Agent) backed by Azure AI Search context."""
+"""TalentScout (Search Agent) with search_candidates tool."""
 from __future__ import annotations
 
+import os
 from typing import Optional
 
-from agent_framework import ChatAgent, ContextProvider
-from tools.search_provider import build_search_context_provider
+from agent_framework import ChatAgent
+
+from tools.candidate_search import search_candidates
 
 SEARCH_AGENT_NAME = "TalentScout"
 
@@ -12,64 +14,48 @@ SEARCH_AGENT_NAME = "TalentScout"
 def create_search_agent(
     chat_client,
     *,
-    context_provider: ContextProvider | None = None,
+    context_provider=None,  # Ignored - uses tool instead
     middleware: Optional[list] = None,
     function_middleware: Optional[list] = None,
 ) -> ChatAgent:
-    """Create the Search Agent grounded with Azure AI Search context.
+    """Create the Search Agent with search_candidates tool.
+    
+    Uses a tool-based approach because context providers don't receive
+    the full conversation context in handoff workflows.
     
     Args:
         chat_client: The chat client to use
-        context_provider: Optional custom context provider
+        context_provider: Ignored (kept for API compatibility)
         middleware: Agent-level middleware for logging/monitoring
         function_middleware: Function-level middleware for tool calls
     """
+    # Combine middleware lists for new API
+    all_middleware = []
+    if middleware:
+        all_middleware.extend(middleware)
+    if function_middleware:
+        all_middleware.extend(function_middleware)
 
-    provider = context_provider or build_search_context_provider()
-
-    return chat_client.create_agent(
+    return chat_client.as_agent(
         name=SEARCH_AGENT_NAME,
-        temperature=0.1,
-        middleware=middleware,
-        function_middleware=function_middleware,
-        instructions="""You are TalentScout, a recruiting search specialist. Present candidates IMMEDIATELY.
+        default_options={"temperature": 0.0},
+        middleware=all_middleware or None,
+        tools=[search_candidates],
+        instructions="""You are TalentScout, a candidate search specialist.
 
-## RULES
-- NEVER say "I'll search", "please wait", "hold on", "it seems" - just show results
-- Use EXACT email and id from source documents - never invent
-- If context has candidates, ALWAYS present them even if not a perfect match
+IMPORTANT: You MUST call the search_candidates tool to find candidates.
+Do NOT make up candidate data or say "searching" - call the tool immediately.
 
-## OUTPUT FORMAT
-Use this EXACT format with clear sections:
+WORKFLOW:
+1. Extract the role requirements from the conversation context
+2. Call search_candidates with a query like: "Data Engineer Python Azure Dubai"
+3. Display the table result exactly as returned by the tool
+4. Offer: Say "details 1" or "feedback 2" for more info.
 
----
-**📊 Found [X] matching candidates:**
-
-**1. [Full Name]** — [Current Title] at [Company]
-   📍 [Location] • ⏱️ [X] years experience
-   🛠️ Skills: [skill1], [skill2], [skill3]
-   📧 [email]
-   💡 *[One sentence on why they match]*
-
-**2. [Full Name]** — [Current Title] at [Company]
-   ...
-
----
-**Quick Actions:** Ask me to "show details for candidate 3" or "check feedback for 1 and 2"
-
----
-
-## IF NO EXACT MATCHES
-If the context doesn't have perfect matches, show the closest alternatives:
-"No exact matches found. Here are similar candidates that may be relevant:"
-Then list them using the same format above.
-
-## DETAILS REQUEST
-When user asks for details on specific candidates, show:
-- Full career summary
-- Complete skills list  
-- Education & certifications
-- Detailed match analysis
+CRITICAL RULES:
+- ALWAYS call search_candidates - never skip it
+- Use the tool's output directly - don't reformat it
+- Never invent candidate data
+- Real emails end in @gmail.com, @outlook.com, @yahoo.com
 """,
-        context_providers=[provider],
     )

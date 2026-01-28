@@ -31,11 +31,18 @@ def create_outreach_agent(
         middleware: Agent-level middleware for logging/monitoring
         function_middleware: Function-level middleware for tool calls
     """
-    return chat_client.create_agent(
+    # Combine middleware lists for new API
+    all_middleware = []
+    if middleware:
+        all_middleware.extend(middleware)
+    if function_middleware:
+        all_middleware.extend(function_middleware)
+    
+    return chat_client.as_agent(
         name=OUTREACH_AGENT_NAME,
-        temperature=0.2,
-        middleware=middleware,
-        function_middleware=function_middleware,
+        default_options={"temperature": 0.2},
+        middleware=all_middleware or None,
+        tools=[send_outreach_email, confirm_outreach_delivery],
         instructions="""You draft recruitment emails.
 
 ## Tools
@@ -66,5 +73,4 @@ User: "Great, send it"
     job_title="Data Engineer"
 )
 """,
-        tools=[send_outreach_email, confirm_outreach_delivery],
     )

@@ -1,6 +1,5 @@
 """
-Agent Factory - Creates configured agent instances.
-Multi-Agent (create_recruiting_workflow) - Handoff workflow with specialists
+Agent Factory - Creates the multi-agent recruiting workflow.
 
 Supports LLM providers:
 - azure_openai: Azure OpenAI (with Entra ID or API key auth)
@@ -9,8 +8,6 @@ Supports LLM providers:
 import os
 from pathlib import Path
 from config import config
-from tools.search_provider import build_search_context_provider, build_resume_search_provider, build_hybrid_agentic_provider
-from tools.outreach_email import send_outreach_email
 from agents.middleware import get_default_middleware
 
 
@@ -56,24 +53,6 @@ def _create_client():
         )
 
 
-def create_recruiter():
-    """Create the single recruiter agent (simple mode).
-
-    The recruiter is grounded by the Azure AI Search context provider so it can
-    cite resumes directly from the knowledge base while still calling
-    `send_outreach_email` when needed.
-    """
-
-    search_context = build_search_context_provider()
-
-    return _create_client().create_agent(
-        name="Recruiter",
-        instructions=_load_instructions("recruiter"),
-        context_providers=[search_context],
-        tools=[send_outreach_email],
-    )
-
-
 def create_recruiting_workflow(checkpoint_storage=None):
     """Create multi-agent recruiting workflow (advanced mode).
     
@@ -111,7 +90,7 @@ def create_recruiting_workflow(checkpoint_storage=None):
     )
     search_agent = create_search_agent(
         chat_client,
-        context_provider=build_hybrid_agentic_provider(),
+        # No context_provider - uses search_candidates tool instead
         middleware=agent_middleware if enable_middleware else None,
         function_middleware=function_middleware if enable_middleware else None,
     )
@@ -127,19 +106,18 @@ def create_recruiting_workflow(checkpoint_storage=None):
     )
     
     # Create orchestrator (coordinator agent)
-    orchestrator = chat_client.create_agent(
+    orchestrator = chat_client.as_agent(
         name="orchestrator",
-        temperature=0.0,
-        top_p=0.1,  # Very focused sampling
+        default_options={"temperature": 0.0, "top_p": 0.1},
         instructions="""You are a silent router. Call ONE handoff tool and STOP.
 
 ROUTING RULES:
-1. Job/role request (e.g., "AI Engineer", "hire developer") → handoff_to_profile_agent
-2. User approves profile ("yes", "ok", "looks good", "search", "find", "proceed") → handoff_to_search_agent
-3. User wants to modify profile ("add", "change", "remove", "update") → handoff_to_profile_agent
-4. User asks for candidate details/insights ("details", "more info", "show more") → handoff_to_search_agent
-5. User asks about interview history, feedback, red flags, or "can we trust candidate X" → handoff_to_insights_agent
-6. Email/contact/outreach/send request → handoff_to_outreach_agent
+1. Job/role request (e.g., "AI Engineer", "hire developer") → handoff_to_rolecrafter
+2. User approves profile ("yes", "ok", "looks good", "search", "find", "proceed") → handoff_to_talentscout
+3. User wants to modify profile ("add", "change", "remove", "update") → handoff_to_rolecrafter
+4. User asks for candidate details/insights ("details", "more info", "show more") → handoff_to_talentscout
+5. User asks about interview history, feedback, red flags → handoff_to_insightpulse
+6. Email/contact/outreach/send request → handoff_to_connectpilot
 
 CRITICAL:
 - DO NOT output any text, emojis, or messages
@@ -151,17 +129,21 @@ CRITICAL:
     
     # Build handoff workflow
     # - participants: All agents (orchestrator first as coordinator)
-    # - set_coordinator: The orchestrator receives all user input first
-    # - add_handoff: Enable routing (MUST include orchestrator's routes!)
-    # NOTE: profile_agent does NOT have handoff to search - user must approve via orchestrator
+    # - with_start_agent: The orchestrator receives all user input first
+    # - add_handoff: Enable routing between agents
     builder = (
         HandoffBuilder(
             name="recruiting_workflow",
             participants=[orchestrator, profile_agent, search_agent, insights_agent, outreach_agent],
         )
-        .set_coordinator(orchestrator)
-        # Orchestrator exclusively routes user intent to the right specialist
+        .with_start_agent(orchestrator)
+        # Orchestrator routes user intent to the right specialist
         .add_handoff(orchestrator, [profile_agent, search_agent, insights_agent, outreach_agent])
+        # Specialists hand back to orchestrator when done (for next user input)
+        .add_handoff(profile_agent, [orchestrator])
+        .add_handoff(search_agent, [orchestrator])
+        .add_handoff(insights_agent, [orchestrator])
+        .add_handoff(outreach_agent, [orchestrator])
     )
     
     # Enable checkpointing if storage provided

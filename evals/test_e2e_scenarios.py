@@ -1,7 +1,7 @@
 """
 End-to-End Scenario Evaluation
 
-Tests full conversation flows through the recruiting agent.
+Tests full conversation flows through the multi-agent recruiting workflow.
 """
 import asyncio
 import json
@@ -11,8 +11,8 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from agent_framework import ChatMessage
-from agents.factory import create_recruiter
+from agent_framework import AgentRunUpdateEvent, Content
+from agents.factory import create_recruiting_workflow
 
 
 def load_golden_dataset():
@@ -22,53 +22,59 @@ def load_golden_dataset():
         return json.load(f)
 
 
-async def run_conversation(agent, conversation: list) -> dict:
+async def run_conversation(workflow, conversation: list) -> list:
     """Run a full conversation and check expectations at each step."""
-    messages = []
     results = []
     
     for turn in conversation:
         if turn["role"] == "user":
-            # Add user message
-            messages.append(ChatMessage("user", text=turn["content"]))
+            user_input = turn["content"]
             
-        elif turn["role"] == "assistant":
-            # Get agent response
+            # Get workflow response
             tool_calls = []
             response_text = ""
+            agents_seen = []
             
-            async for event in agent.run_stream(messages):
-                if hasattr(event, 'text') and event.text:
-                    response_text += event.text
-                if hasattr(event, 'contents'):
-                    for item in event.contents:
-                        if hasattr(item, 'name') and item.name:
-                            tool_calls.append(item.name)
+            async for event in workflow.run_stream(user_input):
+                if isinstance(event, AgentRunUpdateEvent):
+                    if event.executor_id and event.executor_id not in agents_seen:
+                        agents_seen.append(event.executor_id)
+                    
+                    data = event.data
+                    if hasattr(data, 'text') and data.text:
+                        response_text += data.text
+                    if hasattr(data, 'contents') and data.contents:
+                        for item in data.contents:
+                            if isinstance(item, Content) and item.type == 'function_call' and item.name:
+                                if not item.name.startswith('handoff_'):
+                                    tool_calls.append(item.name)
             
-            # Add assistant message to history
-            messages.append(ChatMessage("assistant", text=response_text))
+            # Check expectations from next assistant turn
+            expected = next((t for t in conversation if t["role"] == "assistant" and t.get("after") == turn.get("id")), None)
             
-            # Check expectations
             turn_result = {
+                "user_input": user_input,
                 "passed": True,
                 "failures": [],
                 "response_preview": response_text[:150] + "..." if len(response_text) > 150 else response_text,
                 "tool_calls": tool_calls,
+                "agents_seen": agents_seen,
             }
             
-            # Check should_contain
-            if turn.get("should_contain"):
-                response_lower = response_text.lower()
-                for keyword in turn["should_contain"]:
-                    if keyword.lower() not in response_lower:
+            if expected:
+                # Check should_contain
+                if expected.get("should_contain"):
+                    response_lower = response_text.lower()
+                    for keyword in expected["should_contain"]:
+                        if keyword.lower() not in response_lower:
+                            turn_result["passed"] = False
+                            turn_result["failures"].append(f"Missing: '{keyword}'")
+                
+                # Check should_call
+                if expected.get("should_call"):
+                    if expected["should_call"] not in tool_calls:
                         turn_result["passed"] = False
-                        turn_result["failures"].append(f"Missing: '{keyword}'")
-            
-            # Check should_call
-            if turn.get("should_call"):
-                if turn["should_call"] not in tool_calls:
-                    turn_result["passed"] = False
-                    turn_result["failures"].append(f"Expected tool: '{turn['should_call']}'")
+                        turn_result["failures"].append(f"Expected tool: '{expected['should_call']}'")
             
             results.append(turn_result)
     
@@ -78,11 +84,15 @@ async def run_conversation(agent, conversation: list) -> dict:
 async def run_e2e_eval():
     """Run end-to-end scenario evaluation."""
     print("=" * 60)
-    print("End-to-End Scenario Evaluation")
+    print("End-to-End Multi-Agent Scenario Evaluation")
     print("=" * 60)
     
     dataset = load_golden_dataset()
-    scenarios = dataset["e2e_scenarios"]
+    scenarios = dataset.get("e2e_scenarios", [])
+    
+    if not scenarios:
+        print("\n⚠️ No e2e_scenarios found in golden_dataset.json")
+        return {"passed": 0, "total": 0, "success_rate": 0}
     
     scenario_results = []
     
@@ -91,10 +101,10 @@ async def run_e2e_eval():
         print(f"   {scenario['description']}")
         print("-" * 40)
         
-        # Create fresh agent for each scenario
-        agent = create_recruiter()
+        # Create fresh workflow for each scenario
+        workflow = create_recruiting_workflow()
         
-        turn_results = await run_conversation(agent, scenario["conversation"])
+        turn_results = await run_conversation(workflow, scenario["conversation"])
         
         all_passed = all(r["passed"] for r in turn_results)
         scenario_results.append({
@@ -104,20 +114,17 @@ async def run_e2e_eval():
         })
         
         # Print turn-by-turn results
-        turn_num = 0
-        for i, turn in enumerate(scenario["conversation"]):
-            if turn["role"] == "user":
-                print(f"\n   👤 User: \"{turn['content'][:50]}...\"" if len(turn['content']) > 50 else f"\n   👤 User: \"{turn['content']}\"")
-            elif turn["role"] == "assistant":
-                result = turn_results[turn_num]
-                status = "✅" if result["passed"] else "❌"
-                print(f"   🤖 Agent: {status}")
-                if result["tool_calls"]:
-                    print(f"      Tools: {', '.join(result['tool_calls'])}")
-                if not result["passed"]:
-                    for failure in result["failures"]:
-                        print(f"      ⚠️ {failure}")
-                turn_num += 1
+        for result in turn_results:
+            status = "✅" if result["passed"] else "❌"
+            print(f"\n   👤 User: \"{result['user_input'][:50]}...\"" if len(result['user_input']) > 50 else f"\n   👤 User: \"{result['user_input']}\"")
+            print(f"   🤖 Response: {status}")
+            if result["agents_seen"]:
+                print(f"      Agents: {' → '.join(result['agents_seen'])}")
+            if result["tool_calls"]:
+                print(f"      Tools: {', '.join(result['tool_calls'])}")
+            if not result["passed"]:
+                for failure in result["failures"]:
+                    print(f"      ⚠️ {failure}")
         
         print(f"\n   {'✅ SCENARIO PASSED' if all_passed else '❌ SCENARIO FAILED'}")
     

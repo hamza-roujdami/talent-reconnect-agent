@@ -1,7 +1,7 @@
 """
 Agent Behavior Evaluation
 
-Tests if agent follows the HITL workflow correctly.
+Tests if the multi-agent workflow follows the correct handoff patterns.
 """
 import asyncio
 import json
@@ -11,8 +11,8 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from agent_framework import ChatMessage
-from agents.factory import create_recruiter
+from agent_framework import AgentRunUpdateEvent, Content
+from agents.factory import create_recruiting_workflow
 
 
 def load_golden_dataset():
@@ -22,27 +22,33 @@ def load_golden_dataset():
         return json.load(f)
 
 
-async def test_single_response(agent, input_text: str, expected: dict) -> dict:
-    """Test a single agent response against expectations."""
-    messages = [ChatMessage("user", text=input_text)]
-    
-    # Track tool calls
+async def test_single_response(workflow, input_text: str, expected: dict) -> dict:
+    """Test a single workflow response against expectations."""
+    # Track tool calls and response
     tool_calls = []
     response_text = ""
+    agents_seen = []
     
-    async for event in agent.run_stream(messages):
-        if hasattr(event, 'text') and event.text:
-            response_text += event.text
-        if hasattr(event, 'contents'):
-            for item in event.contents:
-                if hasattr(item, 'name') and item.name:
-                    tool_calls.append(item.name)
+    async for event in workflow.run_stream(input_text):
+        if isinstance(event, AgentRunUpdateEvent):
+            if event.executor_id and event.executor_id not in agents_seen:
+                agents_seen.append(event.executor_id)
+            
+            data = event.data
+            if hasattr(data, 'text') and data.text:
+                response_text += data.text
+            if hasattr(data, 'contents') and data.contents:
+                for item in data.contents:
+                    if isinstance(item, Content) and item.type == 'function_call' and item.name:
+                        if not item.name.startswith('handoff_'):
+                            tool_calls.append(item.name)
     
     # Check expectations
     result = {
         "input": input_text,
         "response_preview": response_text[:200] + "..." if len(response_text) > 200 else response_text,
         "tool_calls": tool_calls,
+        "agents_seen": agents_seen,
         "passed": True,
         "failures": [],
     }
@@ -67,14 +73,14 @@ async def test_single_response(agent, input_text: str, expected: dict) -> dict:
 async def run_behavior_eval():
     """Run agent behavior evaluation."""
     print("=" * 60)
-    print("Agent Behavior Evaluation")
+    print("Multi-Agent Workflow Behavior Evaluation")
     print("=" * 60)
     
     dataset = load_golden_dataset()
     tests = dataset["behavior_tests"]
     
-    # Create agent (Azure AI Search grounded)
-    agent = create_recruiter()
+    # Create workflow
+    workflow = create_recruiting_workflow()
     
     results = []
     passed = 0
@@ -90,7 +96,7 @@ async def run_behavior_eval():
         print(f"   Input: \"{test['input']}\"")
         print(f"   Description: {test['description']}")
         
-        result = await test_single_response(agent, test["input"], test)
+        result = await test_single_response(workflow, test["input"], test)
         results.append(result)
         
         if result["passed"]:
@@ -102,8 +108,10 @@ async def run_behavior_eval():
             for failure in result["failures"]:
                 print(f"      - {failure}")
         
+        if result["agents_seen"]:
+            print(f"   Agents: {' → '.join(result['agents_seen'])}")
         if result["tool_calls"]:
-            print(f"   Tools called: {', '.join(result['tool_calls'])}")
+            print(f"   Tools: {', '.join(result['tool_calls'])}")
     
     # Summary
     total = passed + failed

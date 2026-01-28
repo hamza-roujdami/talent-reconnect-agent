@@ -20,11 +20,12 @@ from pydantic import BaseModel, Field
 
 from agent_framework import (
     AgentRunUpdateEvent,
-    FunctionCallContent,
-    FunctionResultContent,
+    ChatMessage,
+    Content,
+    Role,
     WorkflowOutputEvent,
     RequestInfoEvent,
-    HandoffUserInputRequest,
+    HandoffAgentUserRequest,
     FileCheckpointStorage,
     InMemoryCheckpointStorage,
 )
@@ -119,7 +120,7 @@ class Session:
     def __init__(self, session_id: str):
         self.session_id = session_id
         self.workflow = create_recruiting_workflow(checkpoint_storage=_get_checkpoint_storage())
-        self.pending_requests: List[Tuple[HandoffUserInputRequest, datetime]] = []
+        self.pending_requests: List[Tuple[HandoffAgentUserRequest, datetime]] = []
         self.history: List[dict] = []  # For UI display
         self.title: Optional[str] = None
         self.created_at = datetime.now()
@@ -261,7 +262,11 @@ async def chat_stream(request: ChatRequest):
         try:
             # Choose workflow method based on pending requests
             if session.pending_requests:
-                responses = {req.request_id: incoming_message for (req, _) in session.pending_requests}
+                # Wrap string responses in ChatMessage for new API
+                responses = {
+                    req.request_id: [ChatMessage(role=Role.USER, text=incoming_message)]
+                    for (req, _) in session.pending_requests
+                }
                 session.pending_requests = []
                 stream = session.workflow.send_responses_streaming(responses)
             else:
@@ -298,7 +303,7 @@ async def chat_stream(request: ChatRequest):
                     if hasattr(data, 'contents') and data.contents:
                         for item in data.contents:
                             # Stream tool call announcement (only once per tool)
-                            if isinstance(item, FunctionCallContent) and item.name:
+                            if isinstance(item, Content) and item.type == 'function_call' and item.name:
                                 # Skip handoff tools, only show actual tools
                                 if not item.name.startswith('handoff_') and item.name not in seen_tools:
                                     seen_tools.add(item.name)
@@ -320,7 +325,7 @@ async def chat_stream(request: ChatRequest):
                                         pass
                             
                             # Stream tool results that contain actual content (tables, candidates)
-                            if isinstance(item, FunctionResultContent) and item.result:
+                            if isinstance(item, Content) and item.type == 'function_result' and item.result:
                                 result_str = str(item.result)
                                 tool_name = tool_call_names.get(getattr(item, 'call_id', None))
                                 # Show substantial tool output like tables, candidate lists, or email drafts
@@ -414,6 +419,7 @@ async def chat_stream(request: ChatRequest):
                             'expert assistance',
                             # Waiting/searching messages that cause extra confirmation
                             'hold on',
+                            'please hold',
                             'please wait',
                             'searching',
                             'gathering',
@@ -425,8 +431,23 @@ async def chat_stream(request: ChatRequest):
                             'i will now search',
                             'let me search',
                             'searching now',
+                            # Profile/routing transition fragments
+                            'for profiles',
+                            'for profile',
+                            'building profile',
+                            'creating profile',
+                            'preparing',
+                            'getting started',
+                            'working on',
+                            'processing',
+                            'analyzing',
+                            'reviewing',
                         ]
                         should_block = any(p in text.lower() for p in block_patterns)
+                        
+                        # NEVER block if text contains a markdown table (candidate results)
+                        if '|' in text and ('Name' in text or 'Email' in text or '@' in text):
+                            should_block = False
                         
                         # Also block if text contains hidden data markers
                         if 'CANDIDATE_DATA' in text or '{"candidates"' in text:

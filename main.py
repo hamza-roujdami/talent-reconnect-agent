@@ -5,6 +5,7 @@ API server for the talent acquisition workflow.
 Run with: python main.py
 """
 import logging
+import os
 import uvicorn
 from api import app
 from config import config
@@ -28,13 +29,22 @@ def main():
     # Configure observability (traces, metrics, logs)
     otel_enabled = configure_observability()
     
+    # Determine provider and model
+    if config.llm.provider == "azure_openai":
+        provider = "Azure OpenAI"
+        model = config.llm.model
+    else:
+        provider = "Compass"
+        model = config.llm.model
+    
     source = "Azure AI Search" if not config.use_mock_data else "Mock Data"
     otel_status = "✓ Enabled" if otel_enabled else "✗ Disabled"
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║            Talent Reconnect - AI Recruiting Agent            ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Model:      {config.llm.model:<46} ║
+║  Provider:   {provider:<46} ║
+║  Model:      {model:<46} ║
 ║  Resumes:    {source:<46} ║
 ║  Telemetry:  {otel_status:<46} ║
 ║  Server:     http://localhost:8000                           ║

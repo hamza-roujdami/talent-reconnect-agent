@@ -1,0 +1,685 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "111576181142853983"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources"
+      }
+    },
+    "namePrefix": {
+      "type": "string",
+      "defaultValue": "tragt",
+      "metadata": {
+        "description": "Base name prefix for resources"
+      }
+    },
+    "vnetName": {
+      "type": "string",
+      "defaultValue": "talentreconnect-vnet",
+      "metadata": {
+        "description": "Existing VNet name"
+      }
+    },
+    "appGwSubnetName": {
+      "type": "string",
+      "defaultValue": "appgw-subnet",
+      "metadata": {
+        "description": "Application Gateway subnet name"
+      }
+    },
+    "apimSubnetName": {
+      "type": "string",
+      "defaultValue": "apim-subnet",
+      "metadata": {
+        "description": "APIM subnet name"
+      }
+    },
+    "containerAppFqdn": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Existing Container App FQDN (for backend pool)"
+      }
+    },
+    "apimGatewayFqdn": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Existing APIM Gateway FQDN (for backend pool)"
+      }
+    },
+    "enableWaf": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable WAF on Application Gateway"
+      }
+    },
+    "wafMode": {
+      "type": "string",
+      "defaultValue": "Prevention",
+      "allowedValues": [
+        "Detection",
+        "Prevention"
+      ],
+      "metadata": {
+        "description": "WAF mode"
+      }
+    },
+    "appGwCapacity": {
+      "type": "int",
+      "defaultValue": 2,
+      "minValue": 1,
+      "maxValue": 10,
+      "metadata": {
+        "description": "Application Gateway capacity (instances)"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {
+        "project": "talent-reconnect-agent",
+        "component": "network-security"
+      },
+      "metadata": {
+        "description": "Tags for all resources"
+      }
+    }
+  },
+  "variables": {
+    "uniqueSuffix": "[substring(uniqueString(resourceGroup().id), 0, 4)]",
+    "appGwName": "[format('{0}-appgw-{1}', parameters('namePrefix'), variables('uniqueSuffix'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2024-01-01",
+      "name": "[format('{0}-nsg', variables('appGwName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "AllowGatewayManager",
+            "properties": {
+              "priority": 100,
+              "direction": "Inbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "GatewayManager",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "65200-65535",
+              "description": "Allow Azure Gateway Manager"
+            }
+          },
+          {
+            "name": "AllowHttps",
+            "properties": {
+              "priority": 110,
+              "direction": "Inbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "Internet",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "443",
+              "description": "Allow HTTPS from Internet"
+            }
+          },
+          {
+            "name": "AllowHttp",
+            "properties": {
+              "priority": 120,
+              "direction": "Inbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "Internet",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "80",
+              "description": "Allow HTTP from Internet (for redirect)"
+            }
+          },
+          {
+            "name": "AllowAzureLoadBalancer",
+            "properties": {
+              "priority": 130,
+              "direction": "Inbound",
+              "access": "Allow",
+              "protocol": "*",
+              "sourceAddressPrefix": "AzureLoadBalancer",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "*",
+              "description": "Allow Azure Load Balancer probes"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2024-01-01",
+      "name": "[format('{0}-apim-nsg-{1}', parameters('namePrefix'), variables('uniqueSuffix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "AllowAPIMManagement",
+            "properties": {
+              "priority": 100,
+              "direction": "Inbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "ApiManagement",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "destinationPortRange": "3443",
+              "description": "Management endpoint for Azure portal and PowerShell"
+            }
+          },
+          {
+            "name": "AllowAzureLoadBalancer",
+            "properties": {
+              "priority": 110,
+              "direction": "Inbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "AzureLoadBalancer",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "destinationPortRange": "6390",
+              "description": "Azure Infrastructure Load Balancer"
+            }
+          },
+          {
+            "name": "AllowAppGateway",
+            "properties": {
+              "priority": 120,
+              "direction": "Inbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "[reference(resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('appGwSubnetName')), '2024-01-01').addressPrefix]",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "destinationPortRanges": [
+                "80",
+                "443"
+              ],
+              "description": "Allow traffic from Application Gateway"
+            }
+          },
+          {
+            "name": "AllowVNetInbound",
+            "properties": {
+              "priority": 130,
+              "direction": "Inbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "VirtualNetwork",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "destinationPortRanges": [
+                "80",
+                "443"
+              ],
+              "description": "Allow VNet internal traffic"
+            }
+          },
+          {
+            "name": "AllowStorageOutbound",
+            "properties": {
+              "priority": 100,
+              "direction": "Outbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "VirtualNetwork",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "Storage",
+              "destinationPortRange": "443",
+              "description": "Dependency on Azure Storage"
+            }
+          },
+          {
+            "name": "AllowSqlOutbound",
+            "properties": {
+              "priority": 110,
+              "direction": "Outbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "VirtualNetwork",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "Sql",
+              "destinationPortRange": "1433",
+              "description": "Dependency on Azure SQL"
+            }
+          },
+          {
+            "name": "AllowKeyVaultOutbound",
+            "properties": {
+              "priority": 120,
+              "direction": "Outbound",
+              "access": "Allow",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "VirtualNetwork",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "AzureKeyVault",
+              "destinationPortRange": "443",
+              "description": "Dependency on Azure Key Vault"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "applicationGateway",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "applicationGatewayName": {
+            "value": "[variables('appGwName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "subnetId": {
+            "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('appGwSubnetName'))]"
+          },
+          "skuTier": "[if(parameters('enableWaf'), createObject('value', 'WAF_v2'), createObject('value', 'Standard_v2'))]",
+          "capacity": {
+            "value": "[parameters('appGwCapacity')]"
+          },
+          "containerAppFqdn": {
+            "value": "[parameters('containerAppFqdn')]"
+          },
+          "apimGatewayFqdn": {
+            "value": "[parameters('apimGatewayFqdn')]"
+          },
+          "enableWaf": {
+            "value": "[parameters('enableWaf')]"
+          },
+          "wafMode": {
+            "value": "[parameters('wafMode')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "3595819530187055692"
+            }
+          },
+          "parameters": {
+            "applicationGatewayName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Application Gateway"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for resources"
+              }
+            },
+            "subnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet ID for Application Gateway"
+              }
+            },
+            "skuTier": {
+              "type": "string",
+              "defaultValue": "WAF_v2",
+              "allowedValues": [
+                "Standard_v2",
+                "WAF_v2"
+              ],
+              "metadata": {
+                "description": "SKU tier for Application Gateway"
+              }
+            },
+            "capacity": {
+              "type": "int",
+              "defaultValue": 2,
+              "minValue": 1,
+              "maxValue": 10,
+              "metadata": {
+                "description": "Capacity (instance count) for Application Gateway"
+              }
+            },
+            "containerAppFqdn": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Backend FQDN for Container Apps"
+              }
+            },
+            "apimGatewayFqdn": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Backend FQDN for API Management"
+              }
+            },
+            "enableWaf": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Enable WAF"
+              }
+            },
+            "wafMode": {
+              "type": "string",
+              "defaultValue": "Prevention",
+              "allowedValues": [
+                "Detection",
+                "Prevention"
+              ],
+              "metadata": {
+                "description": "WAF mode - Detection or Prevention"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags for resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/publicIPAddresses",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}-pip', parameters('applicationGatewayName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "Standard",
+                "tier": "Regional"
+              },
+              "properties": {
+                "publicIPAllocationMethod": "Static",
+                "dnsSettings": {
+                  "domainNameLabel": "[toLower(parameters('applicationGatewayName'))]"
+                }
+              }
+            },
+            {
+              "condition": "[parameters('enableWaf')]",
+              "type": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}-waf-policy', parameters('applicationGatewayName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "customRules": [],
+                "policySettings": {
+                  "requestBodyCheck": true,
+                  "maxRequestBodySizeInKb": 128,
+                  "fileUploadLimitInMb": 100,
+                  "state": "Enabled",
+                  "mode": "[parameters('wafMode')]",
+                  "requestBodyInspectLimitInKB": 128,
+                  "fileUploadEnforcement": true,
+                  "requestBodyEnforcement": true
+                },
+                "managedRules": {
+                  "managedRuleSets": [
+                    {
+                      "ruleSetType": "OWASP",
+                      "ruleSetVersion": "3.2",
+                      "ruleGroupOverrides": []
+                    },
+                    {
+                      "ruleSetType": "Microsoft_BotManagerRuleSet",
+                      "ruleSetVersion": "1.0",
+                      "ruleGroupOverrides": []
+                    }
+                  ],
+                  "exclusions": []
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Network/applicationGateways",
+              "apiVersion": "2024-01-01",
+              "name": "[parameters('applicationGatewayName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "[parameters('skuTier')]",
+                  "tier": "[parameters('skuTier')]",
+                  "capacity": "[parameters('capacity')]"
+                },
+                "gatewayIPConfigurations": [
+                  {
+                    "name": "appGatewayIpConfig",
+                    "properties": {
+                      "subnet": {
+                        "id": "[parameters('subnetId')]"
+                      }
+                    }
+                  }
+                ],
+                "frontendIPConfigurations": [
+                  {
+                    "name": "appGatewayFrontendIP",
+                    "properties": {
+                      "publicIPAddress": {
+                        "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-pip', parameters('applicationGatewayName')))]"
+                      }
+                    }
+                  }
+                ],
+                "frontendPorts": [
+                  {
+                    "name": "port_80",
+                    "properties": {
+                      "port": 80
+                    }
+                  },
+                  {
+                    "name": "port_443",
+                    "properties": {
+                      "port": 443
+                    }
+                  }
+                ],
+                "backendAddressPools": [
+                  {
+                    "name": "containerAppsBackend",
+                    "properties": {
+                      "backendAddresses": "[if(empty(parameters('containerAppFqdn')), createArray(), createArray(createObject('fqdn', parameters('containerAppFqdn'))))]"
+                    }
+                  },
+                  {
+                    "name": "apimBackend",
+                    "properties": {
+                      "backendAddresses": "[if(empty(parameters('apimGatewayFqdn')), createArray(), createArray(createObject('fqdn', parameters('apimGatewayFqdn'))))]"
+                    }
+                  }
+                ],
+                "backendHttpSettingsCollection": [
+                  {
+                    "name": "containerAppsHttpSettings",
+                    "properties": {
+                      "port": 443,
+                      "protocol": "Https",
+                      "cookieBasedAffinity": "Disabled",
+                      "pickHostNameFromBackendAddress": true,
+                      "requestTimeout": 60,
+                      "probe": {
+                        "id": "[resourceId('Microsoft.Network/applicationGateways/probes', parameters('applicationGatewayName'), 'containerAppsProbe')]"
+                      }
+                    }
+                  },
+                  {
+                    "name": "apimHttpSettings",
+                    "properties": {
+                      "port": 443,
+                      "protocol": "Https",
+                      "cookieBasedAffinity": "Disabled",
+                      "pickHostNameFromBackendAddress": true,
+                      "requestTimeout": 60,
+                      "probe": {
+                        "id": "[resourceId('Microsoft.Network/applicationGateways/probes', parameters('applicationGatewayName'), 'apimProbe')]"
+                      }
+                    }
+                  }
+                ],
+                "httpListeners": [
+                  {
+                    "name": "httpListener",
+                    "properties": {
+                      "frontendIPConfiguration": {
+                        "id": "[resourceId('Microsoft.Network/applicationGateways/frontendIPConfigurations', parameters('applicationGatewayName'), 'appGatewayFrontendIP')]"
+                      },
+                      "frontendPort": {
+                        "id": "[resourceId('Microsoft.Network/applicationGateways/frontendPorts', parameters('applicationGatewayName'), 'port_80')]"
+                      },
+                      "protocol": "Http"
+                    }
+                  }
+                ],
+                "requestRoutingRules": [
+                  {
+                    "name": "defaultRoutingRule",
+                    "properties": {
+                      "ruleType": "Basic",
+                      "priority": 100,
+                      "httpListener": {
+                        "id": "[resourceId('Microsoft.Network/applicationGateways/httpListeners', parameters('applicationGatewayName'), 'httpListener')]"
+                      },
+                      "backendAddressPool": {
+                        "id": "[resourceId('Microsoft.Network/applicationGateways/backendAddressPools', parameters('applicationGatewayName'), 'containerAppsBackend')]"
+                      },
+                      "backendHttpSettings": {
+                        "id": "[resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', parameters('applicationGatewayName'), 'containerAppsHttpSettings')]"
+                      }
+                    }
+                  }
+                ],
+                "probes": [
+                  {
+                    "name": "containerAppsProbe",
+                    "properties": {
+                      "protocol": "Https",
+                      "path": "/health",
+                      "interval": 30,
+                      "timeout": 30,
+                      "unhealthyThreshold": 3,
+                      "pickHostNameFromBackendHttpSettings": true,
+                      "minServers": 0,
+                      "match": {
+                        "statusCodes": [
+                          "200-399"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "name": "apimProbe",
+                    "properties": {
+                      "protocol": "Https",
+                      "path": "/status-0123456789abcdef",
+                      "interval": 30,
+                      "timeout": 30,
+                      "unhealthyThreshold": 3,
+                      "pickHostNameFromBackendHttpSettings": true,
+                      "minServers": 0,
+                      "match": {
+                        "statusCodes": [
+                          "200-399"
+                        ]
+                      }
+                    }
+                  }
+                ],
+                "firewallPolicy": "[if(parameters('enableWaf'), createObject('id', resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', format('{0}-waf-policy', parameters('applicationGatewayName')))), null())]",
+                "enableHttp2": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-pip', parameters('applicationGatewayName')))]",
+                "[resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', format('{0}-waf-policy', parameters('applicationGatewayName')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "applicationGatewayId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/applicationGateways', parameters('applicationGatewayName'))]"
+            },
+            "applicationGatewayName": {
+              "type": "string",
+              "value": "[parameters('applicationGatewayName')]"
+            },
+            "publicIpAddress": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}-pip', parameters('applicationGatewayName'))), '2024-01-01').ipAddress]"
+            },
+            "publicFqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}-pip', parameters('applicationGatewayName'))), '2024-01-01').dnsSettings.fqdn]"
+            },
+            "wafPolicyId": {
+              "type": "string",
+              "value": "[if(parameters('enableWaf'), resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', format('{0}-waf-policy', parameters('applicationGatewayName'))), '')]"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "applicationGatewayId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'applicationGateway'), '2025-04-01').outputs.applicationGatewayId.value]"
+    },
+    "applicationGatewayPublicIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'applicationGateway'), '2025-04-01').outputs.publicIpAddress.value]"
+    },
+    "applicationGatewayFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'applicationGateway'), '2025-04-01').outputs.publicFqdn.value]"
+    },
+    "appGwNsgId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-nsg', variables('appGwName')))]"
+    },
+    "apimNsgId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-apim-nsg-{1}', parameters('namePrefix'), variables('uniqueSuffix')))]"
+    },
+    "apimSubnetId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('apimSubnetName'))]"
+    }
+  }
+}

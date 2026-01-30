@@ -7,6 +7,7 @@ Supports LLM providers:
 """
 import os
 from pathlib import Path
+from typing import Optional
 from config import config
 from agents.middleware import get_default_middleware
 
@@ -17,40 +18,48 @@ def _load_instructions(name: str) -> str:
     return path.read_text() if path.exists() else f"You are the {name} agent."
 
 
+def _create_azure_openai_client():
+    """Create Azure OpenAI client (Chat Completions API)."""
+    from agent_framework.azure import AzureOpenAIChatClient
+    
+    llm = config.llm
+    
+    if llm.use_entra_id:
+        from azure.identity import DefaultAzureCredential
+        return AzureOpenAIChatClient(
+            endpoint=llm.azure_endpoint,
+            deployment_name=llm.azure_deployment,
+            credential=DefaultAzureCredential(),
+            api_version="2024-10-21",
+        )
+    else:
+        return AzureOpenAIChatClient(
+            endpoint=llm.azure_endpoint,
+            deployment_name=llm.azure_deployment,
+            api_key=llm.api_key,
+            api_version="2024-10-21",
+        )
+
+
+def _create_openai_client():
+    """Create OpenAI-compatible client (Compass, etc)."""
+    from agent_framework.openai import OpenAIChatClient
+    
+    llm = config.llm
+    return OpenAIChatClient(
+        model_id=llm.model,
+        api_key=llm.api_key,
+        base_url=llm.base_url,
+    )
+
+
 def _create_client():
     """Create chat client based on config."""
     llm = config.llm
-    
     if llm.provider == "azure_openai":
-        from agent_framework.azure import AzureOpenAIChatClient
-        
-        if llm.use_entra_id:
-            # Azure OpenAI with Entra ID (Azure AD) authentication
-            from azure.identity import DefaultAzureCredential
-            
-            return AzureOpenAIChatClient(
-                endpoint=llm.azure_endpoint,
-                deployment_name=llm.azure_deployment,
-                credential=DefaultAzureCredential(),
-                api_version="2024-10-21",
-            )
-        else:
-            # Azure OpenAI with API key
-            return AzureOpenAIChatClient(
-                endpoint=llm.azure_endpoint,
-                deployment_name=llm.azure_deployment,
-                api_key=llm.api_key,
-                api_version="2024-10-21",
-            )
+        return _create_azure_openai_client()
     else:
-        # Compass or OpenAI compatible endpoint
-        from agent_framework.openai import OpenAIChatClient
-        
-        return OpenAIChatClient(
-            model_id=llm.model,
-            api_key=llm.api_key,
-            base_url=llm.base_url,
-        )
+        return _create_openai_client()
 
 
 def create_recruiting_workflow(checkpoint_storage=None):

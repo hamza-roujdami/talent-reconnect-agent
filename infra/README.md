@@ -1,175 +1,206 @@
-# Infrastructure as Code
+# Talent Reconnect - Infrastructure
 
-Bicep templates to deploy all Azure resources for the Talent Reconnect Agent.
+Production-grade Azure AI Foundry infrastructure with **full network isolation** for the Talent Reconnect AI recruiting agent.
 
-## Resources Deployed
+## 🏗️ Architecture
 
-| Resource | Description |
-|----------|-------------|
-| **Resource Group** | `rg-talentreconnect-{env}` |
-| **AI Foundry Account** | Azure AI Services with project management |
-| **AI Project** | Workspace for the recruiting agents |
-| **GPT-4o-mini** | Primary LLM (fast, cost-effective) |
-| **GPT-4o** | Secondary LLM (more capable) |
-| **text-embedding-3-large** | Embedding model for semantic search |
-| **Azure AI Search** | Knowledge base for resumes and feedback |
-| **Log Analytics** | Workspace for logs and metrics |
-| **Application Insights** | APM and tracing |
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Virtual Network (192.168.0.0/16)                  │
+├─────────────────────────────┬───────────────────────────────────────┤
+│      Agent Subnet           │      Private Endpoint Subnet          │
+│    (192.168.0.0/24)         │        (192.168.1.0/24)               │
+│                             │                                       │
+│  ┌───────────────────────┐  │  ┌─────────────────────────────────┐ │
+│  │   Capability Host     │  │  │   Private Endpoints:            │ │
+│  │   (Agent Runtime)     │◄─┼──┤   • AI Foundry                  │ │
+│  │                       │  │  │   • OpenAI / Cognitive Services │ │
+│  │   Delegated to:       │  │  │   • Azure AI Search             │ │
+│  │   Microsoft.App/      │  │  │   • Cosmos DB                   │ │
+│  │   environments        │  │  │   • Blob Storage                │ │
+│  └───────────────────────┘  │  └─────────────────────────────────┘ │
+└─────────────────────────────┴───────────────────────────────────────┘
+                                        │
+          ┌─────────────────────────────┼─────────────────────────────┐
+          ▼                             ▼                             ▼
+   ┌─────────────┐              ┌─────────────┐              ┌─────────────┐
+   │  Cosmos DB  │              │  AI Search  │              │   Storage   │
+   │  (Threads)  │              │  (Vectors)  │              │   (Files)   │
+   └─────────────┘              └─────────────┘              └─────────────┘
+```
 
-## Prerequisites
+## 📦 Resources Deployed
 
-1. **Azure CLI** with Bicep extension:
+| Resource | Purpose | SKU |
+|----------|---------|-----|
+| **AI Foundry Account** | AI services hub with model deployments | S0 |
+| **AI Foundry Project** | Workspace for agents | - |
+| **Capability Host** | Agent runtime (Standard Setup) | Agents |
+| **Azure Cosmos DB** | Thread/conversation persistence | Serverless |
+| **Azure AI Search** | Vector store for knowledge retrieval | Standard |
+| **Azure Storage** | File storage for agent artifacts | Standard_ZRS |
+| **Virtual Network** | Network isolation | /16 |
+| **Private Endpoints** | Secure connectivity (4 endpoints) | - |
+| **Private DNS Zones** | Name resolution (7 zones) | - |
+
+## 🚀 Deployment
+
+### Prerequisites
+
+1. **Azure CLI** with Bicep extension
+2. **Azure subscription** with the following permissions:
+   - Owner or Contributor on the subscription
+   - Ability to create service principals
+3. **Registered providers**:
    ```bash
-   az bicep install
-   az bicep upgrade
+   az provider register --namespace Microsoft.CognitiveServices
+   az provider register --namespace Microsoft.DocumentDB
+   az provider register --namespace Microsoft.Search
+   az provider register --namespace Microsoft.Storage
+   az provider register --namespace Microsoft.Network
+   az provider register --namespace Microsoft.App
    ```
 
-2. **Azure subscription** with permissions to create resources
-
-3. **Sign in to Azure**:
-   ```bash
-   az login
-   az account set --subscription "<your-subscription-id>"
-   ```
-
-## Deploy
-
-### Option 1: Quick Deploy (defaults)
+### Deploy
 
 ```bash
-cd infra
+# 1. Create resource group
+az group create \
+  --name rg-talentreconnect-prod \
+  --location swedencentral \
+  --tags project=talent-reconnect-agent environment=prod
 
-# Deploy with default parameters
-az deployment sub create \
-  --location eastus2 \
+# 2. Deploy infrastructure (15-25 minutes)
+az deployment group create \
+  --resource-group rg-talentreconnect-prod \
   --template-file main.bicep \
-  --parameters main.bicepparam
+  --parameters main.bicepparam \
+  --name talentreconnect-$(date +%Y%m%d)
 ```
 
-### Option 2: Custom Parameters
+### Verify Deployment
 
 ```bash
-az deployment sub create \
-  --location eastus2 \
-  --template-file main.bicep \
-  --parameters baseName=mytalentapp \
-  --parameters environment=prod \
-  --parameters searchSku=standard
+# Check deployment status
+az deployment group show \
+  --resource-group rg-talentreconnect-prod \
+  --name <deployment-name> \
+  --query "properties.provisioningState"
+
+# List resources
+az cognitiveservices account list -g rg-talentreconnect-prod -o table
+az search service list -g rg-talentreconnect-prod -o table
+az cosmosdb list -g rg-talentreconnect-prod -o table
+az storage account list -g rg-talentreconnect-prod -o table
 ```
 
-### Option 3: What-If (Preview Changes)
+## ⚙️ Configuration
+
+### Parameters (`main.bicepparam`)
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `location` | Azure region | `swedencentral` |
+| `aiServices` | Base name for AI services | `tragt` |
+| `firstProjectName` | Project name prefix | `trproj` |
+| `modelName` | Model to deploy | `gpt-4o-mini` |
+| `modelCapacity` | TPM capacity | `30` |
+| `vnetName` | Virtual network name | `talentreconnect-vnet` |
+
+### Supported Regions
+
+Class A subnet support (GA):
+- Australia East, Brazil South, Canada East
+- **East US, East US 2**, France Central
+- Germany West Central, Italy North, Japan East
+- South Africa North, South Central US, South India
+- Spain Central, **Sweden Central**, UAE North
+- UK South, West Europe, **West US, West US 3**
+
+## 🔐 Security Features
+
+| Feature | Description |
+|---------|-------------|
+| **Private Endpoints** | All services accessible only via private IPs |
+| **Network Isolation** | VNet with delegated subnet for agent runtime |
+| **No Public Access** | `publicNetworkAccess: Disabled` on all resources |
+| **Managed Identity** | System-assigned identity for RBAC |
+| **Local Auth Disabled** | Cosmos DB uses AAD only |
+| **TLS 1.2** | Minimum TLS version enforced |
+
+## 🗂️ File Structure
+
+```
+infra/
+├── README.md                    # This file
+├── main.bicep                   # Main orchestration template
+├── main.bicepparam              # Parameter values
+├── deleteCapHost.sh             # Cleanup script for capability host
+└── modules-network-secured/     # Bicep modules
+    ├── ai-account-identity.bicep
+    ├── ai-project-identity.bicep
+    ├── ai-search-role-assignments.bicep
+    ├── add-project-capability-host.bicep
+    ├── azure-storage-account-role-assignment.bicep
+    ├── blob-storage-container-role-assignments.bicep
+    ├── cosmos-container-role-assignments.bicep
+    ├── cosmosdb-account-role-assignment.bicep
+    ├── existing-vnet.bicep
+    ├── format-project-workspace-id.bicep
+    ├── network-agent-vnet.bicep
+    ├── private-endpoint-and-dns.bicep
+    ├── standard-dependent-resources.bicep
+    ├── subnet.bicep
+    ├── validate-existing-resources.bicep
+    └── vnet.bicep
+```
+
+## 🧹 Cleanup
+
+### Delete Capability Host First
+
+Before deleting the resource group, delete the capability host to avoid orphaned resources:
 
 ```bash
-az deployment sub what-if \
-  --location eastus2 \
-  --template-file main.bicep \
-  --parameters main.bicepparam
+# Run the cleanup script
+chmod +x deleteCapHost.sh
+./deleteCapHost.sh
 ```
 
-## Post-Deployment Steps
-
-### 1. Get Search API Key
+### Delete Resource Group
 
 ```bash
-# Get the resource group and search service names from outputs
-RG_NAME=$(az deployment sub show --name main --query properties.outputs.resourceGroupName.value -o tsv)
-SEARCH_NAME=$(az deployment sub show --name main --query properties.outputs.searchName.value -o tsv)
-
-# Get the admin key
-az search admin-key show \
-  --resource-group $RG_NAME \
-  --service-name $SEARCH_NAME \
-  --query primaryKey -o tsv
+az group delete --name rg-talentreconnect-prod --yes --no-wait
 ```
 
-### 2. Create `.env` File
+## 📊 Current Deployment
 
-Copy the output values to your `.env` file:
+**Resource Group:** `rg-talentreconnect-sweden`  
+**Location:** Sweden Central  
+**Deployed:** January 30, 2026
 
-```bash
-# Get deployment outputs
-az deployment sub show --name main --query properties.outputs -o json
-```
+| Resource | Name |
+|----------|------|
+| AI Foundry Account | `tragt4pwr` |
+| AI Foundry Project | `trproj4pwr` |
+| Capability Host | `caphostproj` |
+| Cosmos DB | `tragt4pwrcosmosdb` |
+| AI Search | `tragt4pwrsearch` |
+| Storage | `tragt4pwrstorage` |
+| VNet | `talentreconnect-vnet` |
 
-Then update your `.env`:
+### Endpoints
 
-```env
-# Microsoft Foundry (Azure AI)
-FOUNDRY_CHAT_ENDPOINT=https://ai-talentreconnect-xxx.openai.azure.com/
-FOUNDRY_MODEL_PRIMARY=gpt-4o-mini
-FOUNDRY_MODEL_FAST=gpt-4o
+| Service | Endpoint |
+|---------|----------|
+| AI Foundry | `https://tragt4pwr.cognitiveservices.azure.com/` |
+| Cosmos DB | `https://tragt4pwrcosmosdb.documents.azure.com:443/` |
+| AI Search | Private only (via VNet) |
+| Storage | Private only (via VNet) |
 
-# Azure AI Search
-SEARCH_SERVICE_ENDPOINT=https://search-talentreconnect-xxx.search.windows.net
-SEARCH_SERVICE_API_KEY=<your-admin-key>
-SEARCH_RESUME_INDEX=resumes
-SEARCH_FEEDBACK_INDEX=feedback
-AZURE_SEARCH_MODE=agentic
-AZURE_FEEDBACK_MODE=agentic
+## 🔗 Related Documentation
 
-# Application Insights (optional)
-APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=xxx;...
-```
-
-### 3. Bootstrap Search Indexes
-
-After deployment, create the search indexes and upload data:
-
-```bash
-cd ..
-python data/01-create-index.py
-python data/03-create-feedback-index.py
-python data/02-push-data.py --count 100000
-python data/04-push-feedback-data.py --total-feedback 60000
-```
-
-### 4. Run the Demo
-
-```bash
-python main.py  # Web UI at http://localhost:8000
-```
-
-## Clean Up
-
-Delete all resources:
-
-```bash
-az group delete --name rg-talentreconnect-dev --yes --no-wait
-```
-
-## Cost Estimate (Monthly)
-
-| Resource | SKU | Estimated Cost |
-|----------|-----|----------------|
-| AI Foundry | S0 | Pay-per-token (~$5-50 for demos) |
-| GPT-4o-mini | GlobalStandard | ~$0.15/1M input tokens |
-| GPT-4o | GlobalStandard | ~$2.50/1M input tokens |
-| Azure AI Search | Standard | ~$250/month |
-| Application Insights | Pay-as-you-go | ~$2.30/GB ingested |
-| Log Analytics | PerGB2018 | ~$2.30/GB |
-
-**Demo usage**: ~$260-300/month (mostly Search)  
-**Tip**: Use `basic` SKU for Search (~$75/mo) during development.
-
-## Troubleshooting
-
-### Deployment Fails with Quota Error
-
-Some regions have limited model capacity. Try:
-- `eastus2`, `westus2`, or `swedencentral`
-- Request quota increase in Azure Portal
-
-### Model Deployment Conflicts
-
-Models are deployed serially to avoid conflicts. If you see errors, wait and retry:
-
-```bash
-az deployment sub create --location eastus2 --template-file main.bicep --parameters main.bicepparam
-```
-
-### Search Service Not Available
-
-The Search SKU might not be available in your region. Check:
-```bash
-az search list-supported-tiers --location eastus2
-```
+- [Azure AI Foundry Agent Service](https://learn.microsoft.com/azure/ai-foundry/agents/)
+- [Standard Agent Setup](https://learn.microsoft.com/azure/ai-foundry/agents/concepts/standard-agent-setup)
+- [Network Isolation](https://learn.microsoft.com/azure/ai-foundry/agents/how-to/virtual-network)
+- [Bicep Documentation](https://learn.microsoft.com/azure/azure-resource-manager/bicep/)

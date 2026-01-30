@@ -1,128 +1,418 @@
-// Talent Reconnect Agent - Infrastructure
-// Deploys: AI Foundry + Project + Models, Azure AI Search, Application Insights
+/*
+Standard Setup Network Secured Steps for main.bicep
+-----------------------------------
+*/
+@description('Location for all resources.')
+@allowed([
+  'westus'
+  'eastus'
+  'eastus2'
+  'japaneast'
+  'francecentral'
+  'spaincentral'
+  'uaenorth'
+  'southcentralus'
+  'italynorth'
+  'germanywestcentral'
+  'brazilsouth'
+  'southafricanorth'
+  'australiaeast'
+  'swedencentral'
+  'canadaeast'
+  'westeurope'
+  'westus3'
+  'uksouth'
+  'southindia'
 
-targetScope = 'subscription'
+  //only class B and C
+  'koreacentral'
+  'polandcentral'
+  'switzerlandnorth'
+  'norwayeast'
+])
+param location string = 'eastus'
 
-// ============================================================================
-// Parameters
-// ============================================================================
+@description('Name for your AI Services resource.')
+param aiServices string = 'aiservices'
 
-@description('Base name for all resources (will be used as prefix)')
-param baseName string = 'talentreconnect'
+// Model deployment parameters
+@description('The name of the model you want to deploy')
+param modelName string = 'gpt-4.1'
+@description('The provider of your model')
+param modelFormat string = 'OpenAI'
+@description('The version of your model')
+param modelVersion string = '2025-04-14'
+@description('The sku of your model deployment')
+param modelSkuName string = 'GlobalStandard'
+@description('The tokens per minute (TPM) of your model deployment')
+param modelCapacity int = 30
 
-@description('Azure region for deployment')
-param location string = 'eastus2'
+// Create a short, unique suffix, that will be unique to each resource group
+// Using static values to avoid ARM template validation issues
+var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 4)
+var accountName = toLower('${aiServices}${uniqueSuffix}')
 
-@description('Environment (dev, staging, prod)')
-@allowed(['dev', 'staging', 'prod'])
-param environment string = 'dev'
+@description('Name for your project resource.')
+param firstProjectName string = 'project'
 
-@description('Deploy Application Insights for observability')
-param deployAppInsights bool = true
+@description('This project will be a sub-resource of your account')
+param projectDescription string = 'A project for the AI Foundry account with network secured deployed Agent'
 
-@description('Azure AI Search SKU')
-@allowed(['basic', 'standard', 'standard2', 'standard3'])
-param searchSku string = 'standard'
+@description('The display name of the project')
+param displayName string = 'network secured agent project'
 
-// ============================================================================
-// Variables
-// ============================================================================
+// Existing Virtual Network parameters
+@description('Virtual Network name for the Agent to create new or existing virtual network')
+param vnetName string = 'agent-vnet-test'
 
-var resourceGroupName = 'rg-${baseName}-${environment}'
-var uniqueSuffix = uniqueString(subscription().subscriptionId, baseName, environment)
-var aiFoundryName = 'ai-${baseName}-${uniqueSuffix}'
-var aiProjectName = '${aiFoundryName}-proj'
-var searchServiceName = 'search-${baseName}-${uniqueSuffix}'
-var logAnalyticsName = 'log-${baseName}-${uniqueSuffix}'
-var appInsightsName = 'appi-${baseName}-${uniqueSuffix}'
+@description('The name of Agents Subnet to create new or existing subnet for agents')
+param agentSubnetName string = 'agent-subnet'
 
-var tags = {
-  project: 'talent-reconnect-agent'
-  environment: environment
-  deployedBy: 'bicep'
+@description('The name of Private Endpoint subnet to create new or existing subnet for private endpoints')
+param peSubnetName string = 'pe-subnet'
+
+//Existing standard Agent required resources
+@description('Existing Virtual Network name Resource ID')
+param existingVnetResourceId string = ''
+
+@description('Address space for the VNet (only used for new VNet)')
+param vnetAddressPrefix string = ''
+
+@description('Address prefix for the agent subnet. The default value is 192.168.0.0/24 but you can choose any size /26 or any class like 10.0.0.0 or 172.168.0.0')
+param agentSubnetPrefix string = ''
+
+@description('Address prefix for the private endpoint subnet')
+param peSubnetPrefix string = ''
+
+@description('The AI Search Service full ARM Resource ID. This is an optional field, and if not provided, the resource will be created.')
+param aiSearchResourceId string = ''
+@description('The AI Storage Account full ARM Resource ID. This is an optional field, and if not provided, the resource will be created.')
+param azureStorageAccountResourceId string = ''
+@description('The Cosmos DB Account full ARM Resource ID. This is an optional field, and if not provided, the resource will be created.')
+param azureCosmosDBAccountResourceId string = ''
+@description('The API Management Service full ARM Resource ID. This is an optional field for existing API Management services.')
+param apiManagementResourceId string = ''
+
+//New Param for resource group of Private DNS zones
+//@description('Optional: Resource group containing existing private DNS zones. If specified, DNS zones will not be created.')
+//param existingDnsZonesResourceGroup string = ''
+
+@description('Object mapping DNS zone names to their resource group, or empty string to indicate creation')
+param existingDnsZones object = {
+  'privatelink.services.ai.azure.com': ''
+  'privatelink.openai.azure.com': ''
+  'privatelink.cognitiveservices.azure.com': ''               
+  'privatelink.search.windows.net': ''           
+  'privatelink.blob.core.windows.net': ''                            
+  'privatelink.documents.azure.com': ''
+  'privatelink.azure-api.net': ''                       
 }
 
-// ============================================================================
-// Resource Group
-// ============================================================================
+@description('Zone Names for Validation of existing Private Dns Zones')
+param dnsZoneNames array = [
+  'privatelink.services.ai.azure.com'
+  'privatelink.openai.azure.com'
+  'privatelink.cognitiveservices.azure.com'
+  'privatelink.search.windows.net'
+  'privatelink.blob.core.windows.net'
+  'privatelink.documents.azure.com'
+  'privatelink.azure-api.net'
+]
 
-resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
-  name: resourceGroupName
-  location: location
-  tags: tags
-}
 
-// ============================================================================
-// Modules
-// ============================================================================
+var projectName = toLower('${firstProjectName}${uniqueSuffix}')
+var cosmosDBName = toLower('${aiServices}${uniqueSuffix}cosmosdb')
+var aiSearchName = toLower('${aiServices}${uniqueSuffix}search')
+var azureStorageName = toLower('${aiServices}${uniqueSuffix}storage')
 
-module aiFoundry 'modules/ai-foundry.bicep' = {
-  scope: rg
+// Check if existing resources have been passed in
+var storagePassedIn = azureStorageAccountResourceId != ''
+var searchPassedIn = aiSearchResourceId != ''
+var cosmosPassedIn = azureCosmosDBAccountResourceId != ''
+var existingVnetPassedIn = existingVnetResourceId != ''
+
+
+var acsParts = split(aiSearchResourceId, '/')
+var aiSearchServiceSubscriptionId = searchPassedIn ? acsParts[2] : subscription().subscriptionId
+var aiSearchServiceResourceGroupName = searchPassedIn ? acsParts[4] : resourceGroup().name
+
+var cosmosParts = split(azureCosmosDBAccountResourceId, '/')
+var cosmosDBSubscriptionId = cosmosPassedIn ? cosmosParts[2] : subscription().subscriptionId
+var cosmosDBResourceGroupName = cosmosPassedIn ? cosmosParts[4] : resourceGroup().name
+
+var storageParts = split(azureStorageAccountResourceId, '/')
+var azureStorageSubscriptionId = storagePassedIn ? storageParts[2] : subscription().subscriptionId
+var azureStorageResourceGroupName = storagePassedIn ? storageParts[4] : resourceGroup().name
+
+var vnetParts = split(existingVnetResourceId, '/')
+var vnetSubscriptionId = existingVnetPassedIn ? vnetParts[2] : subscription().subscriptionId
+var vnetResourceGroupName = existingVnetPassedIn ? vnetParts[4] : resourceGroup().name
+var existingVnetName = existingVnetPassedIn ? last(vnetParts) : vnetName
+var trimVnetName = trim(existingVnetName)
+
+@description('The name of the project capability host to be created')
+param projectCapHost string = 'caphostproj'
+
+// Create Virtual Network and Subnets
+module vnet 'modules-network-secured/network-agent-vnet.bicep' = {
+  name: 'vnet-${trimVnetName}-${uniqueSuffix}-deployment'
   params: {
-    aiFoundryName: aiFoundryName
-    aiProjectName: aiProjectName
     location: location
-    tags: tags
+    vnetName: trimVnetName
+    useExistingVnet: existingVnetPassedIn
+    existingVnetResourceGroupName: vnetResourceGroupName
+    agentSubnetName: agentSubnetName
+    peSubnetName: peSubnetName
+    vnetAddressPrefix: vnetAddressPrefix
+    agentSubnetPrefix: agentSubnetPrefix
+    peSubnetPrefix: peSubnetPrefix
+    existingVnetSubscriptionId: vnetSubscriptionId
   }
 }
 
-module search 'modules/search.bicep' = {
-  scope: rg
+/*
+  Create the AI Services account and gpt-4o model deployment
+*/
+module aiAccount 'modules-network-secured/ai-account-identity.bicep' = {
+  name: 'ai-${accountName}-deployment'
   params: {
-    searchServiceName: searchServiceName
+    // workspace organization
+    accountName: accountName
     location: location
-    sku: searchSku
-    tags: tags
+    modelName: modelName
+    modelFormat: modelFormat
+    modelVersion: modelVersion
+    modelSkuName: modelSkuName
+    modelCapacity: modelCapacity
+    agentSubnetId: vnet.outputs.agentSubnetId
+  }
+}
+/*
+  Validate existing resources
+  This module will check if the AI Search Service, Storage Account, and Cosmos DB Account already exist.
+  If they do, it will set the corresponding output to true. If they do not exist, it will set the output to false.
+*/
+module validateExistingResources 'modules-network-secured/validate-existing-resources.bicep' = {
+  name: 'validate-existing-resources-${uniqueSuffix}-deployment'
+  params: {
+    aiSearchResourceId: aiSearchResourceId
+    azureStorageAccountResourceId: azureStorageAccountResourceId
+    azureCosmosDBAccountResourceId: azureCosmosDBAccountResourceId
+    apiManagementResourceId: apiManagementResourceId
+    existingDnsZones: existingDnsZones
+    dnsZoneNames: dnsZoneNames
   }
 }
 
-module observability 'modules/observability.bicep' = if (deployAppInsights) {
-  scope: rg
+// This module will create new agent dependent resources
+// A Cosmos DB account, an AI Search Service, and a Storage Account are created if they do not already exist
+module aiDependencies 'modules-network-secured/standard-dependent-resources.bicep' = {
+  name: 'dependencies-${uniqueSuffix}-deployment'
   params: {
-    logAnalyticsName: logAnalyticsName
-    appInsightsName: appInsightsName
     location: location
-    tags: tags
+    azureStorageName: azureStorageName
+    aiSearchName: aiSearchName
+    cosmosDBName: cosmosDBName
+
+    // AI Search Service parameters
+    aiSearchResourceId: aiSearchResourceId
+    aiSearchExists: validateExistingResources.outputs.aiSearchExists
+
+    // Storage Account
+    azureStorageAccountResourceId: azureStorageAccountResourceId
+    azureStorageExists: validateExistingResources.outputs.azureStorageExists
+
+    // Cosmos DB Account
+    cosmosDBResourceId: azureCosmosDBAccountResourceId
+    cosmosDBExists: validateExistingResources.outputs.cosmosDBExists
+    }
+}
+
+resource storage 'Microsoft.Storage/storageAccounts@2022-05-01' existing = {
+  name: aiDependencies.outputs.azureStorageName
+  scope: resourceGroup(azureStorageSubscriptionId, azureStorageResourceGroupName)
+}
+
+
+resource aiSearch 'Microsoft.Search/searchServices@2023-11-01' existing = {
+  name: aiDependencies.outputs.aiSearchName
+  scope: resourceGroup(aiDependencies.outputs.aiSearchServiceSubscriptionId, aiDependencies.outputs.aiSearchServiceResourceGroupName)
+}
+
+resource cosmosDB 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' existing = {
+  name: aiDependencies.outputs.cosmosDBName
+  scope: resourceGroup(cosmosDBSubscriptionId, cosmosDBResourceGroupName)
+}
+
+// Private Endpoint and DNS Configuration
+// This module sets up private network access for all Azure services:
+// 1. Creates private endpoints in the specified subnet
+// 2. Sets up private DNS zones for each service
+// 3. Links private DNS zones to the VNet for name resolution
+// 4. Configures network policies to restrict access to private endpoints only
+module privateEndpointAndDNS 'modules-network-secured/private-endpoint-and-dns.bicep' = {
+    name: '${uniqueSuffix}-private-endpoint'
+    params: {
+      aiAccountName: aiAccount.outputs.accountName    // AI Services to secure
+      aiSearchName: aiDependencies.outputs.aiSearchName       // AI Search to secure
+      storageName: aiDependencies.outputs.azureStorageName        // Storage to secure
+      cosmosDBName:aiDependencies.outputs.cosmosDBName
+      apiManagementName: validateExistingResources.outputs.apiManagementName              // API Management to secure (optional)
+      vnetName: vnet.outputs.virtualNetworkName    // VNet containing subnets
+      peSubnetName: vnet.outputs.peSubnetName        // Subnet for private endpoints
+      suffix: uniqueSuffix                                    // Unique identifier
+      vnetResourceGroupName: vnet.outputs.virtualNetworkResourceGroup
+      vnetSubscriptionId: vnet.outputs.virtualNetworkSubscriptionId // Subscription ID for the VNet
+      cosmosDBSubscriptionId: cosmosDBSubscriptionId // Subscription ID for Cosmos DB
+      cosmosDBResourceGroupName: cosmosDBResourceGroupName // Resource Group for Cosmos DB
+      aiSearchSubscriptionId: aiSearchServiceSubscriptionId // Subscription ID for AI Search Service
+      aiSearchResourceGroupName: aiSearchServiceResourceGroupName // Resource Group for AI Search Service
+      storageAccountResourceGroupName: azureStorageResourceGroupName // Resource Group for Storage Account
+      storageAccountSubscriptionId: azureStorageSubscriptionId // Subscription ID for Storage Account
+      apiManagementResourceGroupName: validateExistingResources.outputs.apiManagementResourceGroupName // Resource Group for API Management (if provided)
+      apiManagementSubscriptionId: validateExistingResources.outputs.apiManagementSubscriptionId // Subscription ID for API Management (if provided)
+      existingDnsZones: existingDnsZones
+    }
+    dependsOn: [
+    aiSearch      // Ensure AI Search exists
+    storage       // Ensure Storage exists
+    cosmosDB      // Ensure Cosmos DB exists
+  ]
+  }
+
+/*
+  Creates a new project (sub-resource of the AI Services account)
+*/
+module aiProject 'modules-network-secured/ai-project-identity.bicep' = {
+  name: 'ai-${projectName}-deployment'
+  params: {
+    // workspace organization
+    projectName: projectName
+    projectDescription: projectDescription
+    displayName: displayName
+    location: location
+
+    aiSearchName: aiDependencies.outputs.aiSearchName
+    aiSearchServiceResourceGroupName: aiDependencies.outputs.aiSearchServiceResourceGroupName
+    aiSearchServiceSubscriptionId: aiDependencies.outputs.aiSearchServiceSubscriptionId
+
+    cosmosDBName: aiDependencies.outputs.cosmosDBName
+    cosmosDBSubscriptionId: aiDependencies.outputs.cosmosDBSubscriptionId
+    cosmosDBResourceGroupName: aiDependencies.outputs.cosmosDBResourceGroupName
+
+    azureStorageName: aiDependencies.outputs.azureStorageName
+    azureStorageSubscriptionId: aiDependencies.outputs.azureStorageSubscriptionId
+    azureStorageResourceGroupName: aiDependencies.outputs.azureStorageResourceGroupName
+    // dependent resources
+    accountName: aiAccount.outputs.accountName
+  }
+  dependsOn: [
+     privateEndpointAndDNS
+     cosmosDB
+     aiSearch
+     storage
+  ]
+}
+
+module formatProjectWorkspaceId 'modules-network-secured/format-project-workspace-id.bicep' = {
+  name: 'format-project-workspace-id-${uniqueSuffix}-deployment'
+  params: {
+    projectWorkspaceId: aiProject.outputs.projectWorkspaceId
   }
 }
 
-// ============================================================================
-// Outputs
-// ============================================================================
+/*
+  Assigns the project SMI the storage blob data contributor role on the storage account
+*/
+module storageAccountRoleAssignment 'modules-network-secured/azure-storage-account-role-assignment.bicep' = {
+  name: 'storage-ra-${uniqueSuffix}-deployment'
+  scope: resourceGroup(azureStorageSubscriptionId, azureStorageResourceGroupName)
+  params: {
+    azureStorageName: aiDependencies.outputs.azureStorageName
+    projectPrincipalId: aiProject.outputs.projectPrincipalId
+  }
+  dependsOn: [
+   storage
+   privateEndpointAndDNS
+  ]
+}
 
-output resourceGroupName string = rg.name
+// The Comos DB Operator role must be assigned before the caphost is created
+module cosmosAccountRoleAssignments 'modules-network-secured/cosmosdb-account-role-assignment.bicep' = {
+  name: 'cosmos-account-ra-${uniqueSuffix}-deployment'
+  scope: resourceGroup(cosmosDBSubscriptionId, cosmosDBResourceGroupName)
+  params: {
+    cosmosDBName: aiDependencies.outputs.cosmosDBName
+    projectPrincipalId: aiProject.outputs.projectPrincipalId
+  }
+  dependsOn: [
+    cosmosDB
+    privateEndpointAndDNS
+  ]
+}
 
-// AI Foundry outputs
-output aiFoundryEndpoint string = aiFoundry.outputs.endpoint
-output aiFoundryName string = aiFoundry.outputs.name
-output aiProjectName string = aiFoundry.outputs.projectName
+// This role can be assigned before or after the caphost is created
+module aiSearchRoleAssignments 'modules-network-secured/ai-search-role-assignments.bicep' = {
+  name: 'ai-search-ra-${uniqueSuffix}-deployment'
+  scope: resourceGroup(aiSearchServiceSubscriptionId, aiSearchServiceResourceGroupName)
+  params: {
+    aiSearchName: aiDependencies.outputs.aiSearchName
+    projectPrincipalId: aiProject.outputs.projectPrincipalId
+  }
+  dependsOn: [
+    aiSearch
+    privateEndpointAndDNS
+  ]
+}
 
-// Search outputs
-output searchEndpoint string = search.outputs.endpoint
-output searchName string = search.outputs.name
+// This module creates the capability host for the project and account
+module addProjectCapabilityHost 'modules-network-secured/add-project-capability-host.bicep' = {
+  name: 'capabilityHost-configuration-${uniqueSuffix}-deployment'
+  params: {
+    accountName: aiAccount.outputs.accountName
+    projectName: aiProject.outputs.projectName
+    cosmosDBConnection: aiProject.outputs.cosmosDBConnection
+    azureStorageConnection: aiProject.outputs.azureStorageConnection
+    aiSearchConnection: aiProject.outputs.aiSearchConnection
+    projectCapHost: projectCapHost
+  }
+  dependsOn: [
+     aiSearch      // Ensure AI Search exists
+     storage       // Ensure Storage exists
+     cosmosDB
+     privateEndpointAndDNS
+     cosmosAccountRoleAssignments
+     storageAccountRoleAssignment
+     aiSearchRoleAssignments
+  ]
+}
 
-// Observability outputs (conditional)
-output appInsightsConnectionString string = observability.?outputs.?connectionString ?? ''
-output appInsightsName string = observability.?outputs.?name ?? ''
+// The Storage Blob Data Owner role must be assigned after the caphost is created
+module storageContainersRoleAssignment 'modules-network-secured/blob-storage-container-role-assignments.bicep' = {
+  name: 'storage-containers-ra-${uniqueSuffix}-deployment'
+  scope: resourceGroup(azureStorageSubscriptionId, azureStorageResourceGroupName)
+  params: {
+    aiProjectPrincipalId: aiProject.outputs.projectPrincipalId
+    storageName: aiDependencies.outputs.azureStorageName
+    workspaceId: formatProjectWorkspaceId.outputs.projectWorkspaceIdGuid
+  }
+  dependsOn: [
+    addProjectCapabilityHost
+  ]
+}
 
-// Environment file helper
-output envFileContent string = '''
-# Generated by Bicep deployment
-# Copy these values to your .env file
+// The Cosmos Built-In Data Contributor role must be assigned after the caphost is created
+module cosmosContainerRoleAssignments 'modules-network-secured/cosmos-container-role-assignments.bicep' = {
+  name: 'cosmos-container-ra-${uniqueSuffix}-deployment'
+  scope: resourceGroup(cosmosDBSubscriptionId, cosmosDBResourceGroupName)
+  params: {
+    cosmosAccountName: aiDependencies.outputs.cosmosDBName
+    projectWorkspaceId: formatProjectWorkspaceId.outputs.projectWorkspaceIdGuid
+    projectPrincipalId: aiProject.outputs.projectPrincipalId
 
-# Microsoft Foundry (Azure AI)
-FOUNDRY_CHAT_ENDPOINT=${aiFoundryEndpoint}
-FOUNDRY_MODEL_PRIMARY=gpt-4o-mini
-FOUNDRY_MODEL_FAST=gpt-4o
-
-# Azure AI Search
-SEARCH_SERVICE_ENDPOINT=${searchEndpoint}
-SEARCH_SERVICE_API_KEY=<get-from-portal-or-cli>
-SEARCH_RESUME_INDEX=resumes
-SEARCH_FEEDBACK_INDEX=feedback
-AZURE_SEARCH_MODE=agentic
-AZURE_FEEDBACK_MODE=agentic
-
-# Application Insights (optional)
-APPLICATIONINSIGHTS_CONNECTION_STRING=${appInsightsConnectionString}
-'''
+  }
+dependsOn: [
+  addProjectCapabilityHost
+  storageContainersRoleAssignment
+  ]
+}

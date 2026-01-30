@@ -1,23 +1,60 @@
 using './main.bicep'
 
-// ============================================================================
-// Talent Reconnect Agent - Deployment Parameters
-// ============================================================================
+// Talent Reconnect Agent - Standard Agent Setup (Sweden Central)
+// Full network isolation with private endpoints
 
-// Base name used as prefix for all resources
-param baseName = 'talentreconnect'
+param location = 'swedencentral'
+param aiServices = 'tragt'
+param modelName = 'gpt-4o-mini'
+param modelFormat = 'OpenAI'
+param modelVersion = '2024-07-18'
+param modelSkuName = 'GlobalStandard'
+param modelCapacity = 30
+param firstProjectName = 'trproj'
+param projectDescription = 'Talent Reconnect - AI Recruiting Agent with Azure AI Search integration'
+param displayName = 'Talent Reconnect Agent'
+param peSubnetName = 'pe-subnet'
 
-// Azure region (choose based on model availability and latency)
-// Options: eastus, eastus2, westus2, westeurope, swedencentral, uaenorth, etc.
-param location = 'uaenorth'
+// Resource IDs for existing resources
+// Leave empty to create new resources
+param existingVnetResourceId = ''
+param vnetName = 'talentreconnect-vnet'
+param agentSubnetName = 'agent-subnet'
+param aiSearchResourceId = ''
+param azureStorageAccountResourceId = ''
+param azureCosmosDBAccountResourceId = ''
 
-// Environment tag
-param environment = 'dev'
+// API Management configuration (optional)
+param apiManagementResourceId = ''
 
-// Deploy Application Insights for observability
-param deployAppInsights = true
+// Pass the DNS zone map here
+// Leave empty to create new DNS zone, add the resource group of existing DNS zone to use it
+param existingDnsZones = {
+  'privatelink.services.ai.azure.com': ''
+  'privatelink.openai.azure.com': ''
+  'privatelink.cognitiveservices.azure.com': ''               
+  'privatelink.search.windows.net': ''           
+  'privatelink.blob.core.windows.net': ''                            
+  'privatelink.documents.azure.com': ''
+  'privatelink.azure-api.net': ''                       
+}
 
-// Azure AI Search SKU
-// - 'basic': ~$75/mo, good for small demos
-// - 'standard': ~$250/mo, recommended for production features
-param searchSku = 'standard'
+//DNSZones names for validating if they exist
+param dnsZoneNames = [
+  'privatelink.services.ai.azure.com'
+  'privatelink.openai.azure.com'
+  'privatelink.cognitiveservices.azure.com'
+  'privatelink.search.windows.net'
+  'privatelink.blob.core.windows.net'
+  'privatelink.documents.azure.com'
+  'privatelink.azure-api.net'
+]
+
+
+// Network configuration: only used when existingVnetResourceId is not provided
+// These addresses are only used when creating a new VNet and subnets
+// If you provide existingVnetResourceId, these values will be ignored
+param vnetAddressPrefix = ''
+param agentSubnetPrefix = ''
+param peSubnetPrefix = ''
+

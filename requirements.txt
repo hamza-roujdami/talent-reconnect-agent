@@ -1,35 +1,23 @@
-# Talent Reconnect Agent - Core Dependencies
+# Talent Reconnect Agent - Foundry Declarative Workflows
 # Install with: pip install -r requirements.txt --pre
 
-# Environment & Utilities
-python-dotenv>=1.0.0
-
-# Microsoft Agent Framework (Preview)
+# Core Foundry SDK
+azure-ai-projects>=1.0.0b6
+azure-ai-agents>=1.0.0b3
 agent-framework>=1.0.0b251114
 agent-framework-azure-ai>=1.0.0b251114
-agent-framework-azure-ai-search>=1.0.0b251114
 
-# Azure Authentication & LLM Client
+# Azure Services
 azure-identity>=1.19.0
-openai>=1.50.0
-
-# Azure AI Search (for resume sourcing with hybrid search)
 azure-search-documents>=11.6.0
 aiohttp>=3.9.0
 
-# Web Framework (API mode)
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-
-# Observability (OpenTelemetry) - for Azure AI Foundry tracing
+# Observability
 opentelemetry-api>=1.20.0
 opentelemetry-sdk>=1.20.0
-opentelemetry-exporter-otlp>=1.20.0
-azure-monitor-opentelemetry>=1.0.0  # Required for Foundry/App Insights tracing
+azure-monitor-opentelemetry>=1.0.0
 
-# Web UI (Chainlit - optional)
-chainlit>=1.0.0
-plotly>=5.0.0
-# Data Generation (for synthetic resumes)
-faker>=18.0.0
-pandas>=2.0.0
+# Development
+python-dotenv>=1.0.0
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

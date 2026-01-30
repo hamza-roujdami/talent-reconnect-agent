@@ -15,6 +15,7 @@ load_dotenv()
 
 
 def _get_env(*names: str, required: bool = False, default: Optional[str] = None) -> Optional[str]:
+    """Get environment variable from multiple possible names."""
     for name in names:
         value = os.getenv(name)
         if value:
@@ -52,7 +53,8 @@ def search_candidates(query: str, top_k: int = 10) -> str:
     Search for candidates matching the given criteria.
     
     Args:
-        query: Search query describing the ideal candidate (e.g., "Python developer with Azure experience in Dubai")
+        query: Search query describing the ideal candidate 
+               (e.g., "Python developer with Azure experience in Dubai")
         top_k: Maximum number of candidates to return (default 10)
         
     Returns:

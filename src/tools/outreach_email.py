@@ -1,5 +1,5 @@
 """
-Email Tool - Outreach Email Generation
+Email tools for ConnectPilot agent.
 
 Generates personalized recruiting outreach emails.
 
@@ -8,24 +8,29 @@ In production, integrate with an email service (SendGrid, AWS SES, etc.).
 """
 
 from datetime import datetime, timezone
-from typing import Annotated
-
-from pydantic import Field
 
 
 def send_outreach_email(
-    candidate_name: Annotated[str, Field(description="Full name of the candidate")],
-    candidate_email: Annotated[str, Field(description="Email address of the candidate")],
-    job_title: Annotated[str, Field(description="The job title being offered")],
-    personalization: Annotated[str, Field(description="Personalized message based on candidate's background")] = "",
-    company_name: Annotated[str, Field(description="The hiring company name")] = "G42",
+    candidate_name: str,
+    candidate_email: str,
+    job_title: str,
+    personalization: str = "",
+    company_name: str = "our client",
 ) -> str:
     """
     Draft a personalized outreach email to a candidate.
-    Returns the email preview for approval.
-    """
     
-    first_name = candidate_name.split()[0]
+    Args:
+        candidate_name: Full name of the candidate
+        candidate_email: Email address of the candidate
+        job_title: The job title being offered
+        personalization: Personalized message based on candidate's background
+        company_name: The hiring company name
+    
+    Returns:
+        Email preview for approval
+    """
+    first_name = candidate_name.split()[0] if candidate_name else "there"
     
     email_body = f"""
 ## 📧 Email Draft
@@ -67,13 +72,23 @@ Would you like me to:
 
 
 def confirm_outreach_delivery(
-    candidate_name: Annotated[str, Field(description="Full name of the candidate")],
-    candidate_email: Annotated[str, Field(description="Email address of the candidate")],
-    job_title: Annotated[str, Field(description="The job title being offered")],
-    company_name: Annotated[str, Field(description="The hiring company name")] = "G42",
+    candidate_name: str,
+    candidate_email: str,
+    job_title: str,
+    company_name: str = "our client",
 ) -> str:
-    """Acknowledge that the drafted outreach email was (simulated) sent."""
-
+    """
+    Acknowledge that the drafted outreach email was (simulated) sent.
+    
+    Args:
+        candidate_name: Full name of the candidate
+        candidate_email: Email address of the candidate
+        job_title: The job title being offered
+        company_name: The hiring company name
+        
+    Returns:
+        Confirmation message
+    """
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     return (
         "## ✅ Email Sent (Simulated)\n\n"

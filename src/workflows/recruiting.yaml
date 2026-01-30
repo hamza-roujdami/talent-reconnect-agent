@@ -1,0 +1,109 @@
+# Talent Reconnect - Multi-Agent Recruiting Workflow
+# 
+# This workflow orchestrates multiple specialist agents to help recruiters
+# find, evaluate, and reach out to candidates.
+#
+# Agents:
+# - Orchestrator: Routes user requests to specialists
+# - RoleCrafter: Generates job profiles from requirements
+# - TalentScout: Searches candidates in Azure AI Search
+# - InsightPulse: Fetches interview feedback history
+# - ConnectPilot: Drafts personalized outreach emails
+
+name: recruiting-workflow
+description: >
+  Multi-agent recruiting workflow that helps talent acquisition teams
+  create job profiles, search candidates, review feedback history,
+  and send personalized outreach.
+
+kind: Workflow
+
+trigger:
+  kind: OnConversationStart
+  id: recruiting_start
+  actions:
+    # Welcome message
+    - kind: SendActivity
+      activity:
+        text: |
+          👋 Welcome to Talent Reconnect!
+          
+          I can help you with:
+          • Creating job profiles from your requirements
+          • Searching for matching candidates
+          • Reviewing interview feedback history
+          • Drafting personalized outreach emails
+          
+          **To get started**, describe the role you're hiring for.
+
+    # Main conversation loop - Orchestrator decides routing
+    - kind: InvokeAzureAgent
+      id: orchestrator_route
+      displayName: Route to specialist
+      agent:
+        name: orchestrator
+      conversationId: =System.ConversationId
+      input:
+        externalLoop:
+          when: true
+      output:
+        responseObject: Local.RoutingResult
+
+    # Conditional routing based on orchestrator decision
+    - kind: ConditionGroup
+      id: route_to_specialist
+      conditions:
+        # Route to RoleCrafter for job profile creation
+        - condition: =Local.RoutingResult.Agent = "rolecrafter"
+          id: route_rolecrafter
+          actions:
+            - kind: InvokeAzureAgent
+              id: invoke_rolecrafter
+              displayName: Create job profile
+              agent:
+                name: rolecrafter
+              conversationId: =System.ConversationId
+
+        # Route to TalentScout for candidate search
+        - condition: =Local.RoutingResult.Agent = "talentscout"
+          id: route_talentscout
+          actions:
+            - kind: InvokeAzureAgent
+              id: invoke_talentscout
+              displayName: Search candidates
+              agent:
+                name: talentscout
+              conversationId: =System.ConversationId
+
+        # Route to InsightPulse for feedback lookup
+        - condition: =Local.RoutingResult.Agent = "insightpulse"
+          id: route_insightpulse
+          actions:
+            - kind: InvokeAzureAgent
+              id: invoke_insightpulse
+              displayName: Lookup feedback
+              agent:
+                name: insightpulse
+              conversationId: =System.ConversationId
+
+        # Route to ConnectPilot for outreach
+        - condition: =Local.RoutingResult.Agent = "connectpilot"
+          id: route_connectpilot
+          actions:
+            - kind: InvokeAzureAgent
+              id: invoke_connectpilot
+              displayName: Draft outreach
+              agent:
+                name: connectpilot
+              conversationId: =System.ConversationId
+
+      # Default: Ask for clarification
+      elseActions:
+        - kind: SendActivity
+          activity:
+            text: |
+              I'm not sure what you'd like to do. Try:
+              • "I need a Data Engineer in Dubai" - to create a job profile
+              • "Search for candidates" - to find matching candidates
+              • "Show feedback for candidate 1" - to see interview history
+              • "Email candidate 1" - to draft an outreach message

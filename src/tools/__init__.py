@@ -1,23 +1,9 @@
-"""
-Custom tools for Talent Reconnect workflow.
+"""Tool implementations for Talent Reconnect agents.
 
-These tools integrate with Azure AI Search and other services.
-They are registered with Foundry Agent Service for use by agents.
+These tools connect to Azure AI Search to provide real data.
 """
 
-from .candidate_search import search_candidates
-from .feedback_lookup import (
-    lookup_feedback_by_emails,
-    lookup_feedback_by_ids,
-    log_interview_feedback,
-)
-from .outreach_email import send_outreach_email, confirm_outreach_delivery
+from .search import search_candidates
+from .feedback import lookup_feedback
 
-__all__ = [
-    "search_candidates",
-    "lookup_feedback_by_emails",
-    "lookup_feedback_by_ids",
-    "log_interview_feedback",
-    "send_outreach_email",
-    "confirm_outreach_delivery",
-]
+__all__ = ["search_candidates", "lookup_feedback"]

@@ -10,6 +10,14 @@ param modelFormat = 'OpenAI'
 param modelVersion = '2024-07-18'
 param modelSkuName = 'GlobalStandard'
 param modelCapacity = 30
+
+// Embedding model for vector search
+param deployEmbeddingModel = true
+param embeddingModelName = 'text-embedding-3-small'
+param embeddingModelVersion = '1'
+param embeddingModelSkuName = 'Standard'
+param embeddingModelCapacity = 120
+
 param firstProjectName = 'trproj'
 param projectDescription = 'Talent Reconnect - AI Recruiting Agent with Azure AI Search integration'
 param displayName = 'Talent Reconnect Agent'

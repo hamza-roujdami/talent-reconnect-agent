@@ -1,24 +1,12 @@
+#!/usr/bin/env python3
 """
-Create Azure AI Search index for interview feedback.
+03 - Create Feedback Index for Azure AI Search (Semantic Search only)
 
-This creates a 'feedback' index that links to the 'resumes' index via candidate_id.
-
-Index Schema:
-- id: Unique feedback record ID
-- candidate_id: Links to resume (foreign key)
-- candidate_email: For easy lookup
-- candidate_name: Denormalized for display
-- interview_date: When the interview happened
-- interviewer: Who conducted the interview
-- role: Role being interviewed for
-- strengths: Observed strengths
-- concerns: Any concerns or red flags
-- recommendation: strong_hire | hire | maybe | no_hire
-- score: Interview score (0-100)
-- notes: Additional notes
+Creates a 'feedback' index that links to the 'resumes' index via candidate_id.
+Uses Microsoft's semantic ranker for intelligent search - no vector embeddings needed.
 
 Usage:
-    python 04-create-feedback-index.py
+    python data/03-create-feedback-index.py
 """
 import os
 from dotenv import load_dotenv
@@ -27,7 +15,6 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
     SearchIndex,
-    SearchField,
     SearchFieldDataType,
     SimpleField,
     SearchableField,
@@ -39,25 +26,29 @@ from azure.search.documents.indexes.models import (
 
 load_dotenv()
 
-# Azure AI Search configuration
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
 SEARCH_ENDPOINT = os.environ["AZURE_SEARCH_ENDPOINT"]
 SEARCH_KEY = os.environ.get("AZURE_SEARCH_API_KEY") or os.environ.get("AZURE_SEARCH_KEY")
 if not SEARCH_KEY:
-    raise RuntimeError("Set AZURE_SEARCH_API_KEY (or legacy AZURE_SEARCH_KEY) before running this script.")
+    raise RuntimeError("Set AZURE_SEARCH_API_KEY before running this script.")
+
 INDEX_NAME = os.environ.get("AZURE_FEEDBACK_INDEX_NAME", "feedback")
-SEMANTIC_CONFIG_NAME = os.environ.get("AZURE_FEEDBACK_SEMANTIC_CONFIG", "feedback-semantic")
+
+# Must be "default" for compatibility with built-in AzureAISearchAgentTool
+SEMANTIC_CONFIG_NAME = "default"
 
 
 def create_feedback_index():
-    """Create the feedback index schema."""
+    """Create the feedback index schema with semantic search."""
     
-    # Create index client
     client = SearchIndexClient(
         endpoint=SEARCH_ENDPOINT,
         credential=AzureKeyCredential(SEARCH_KEY),
     )
     
-    # Define fields
     fields = [
         # Primary key
         SimpleField(
@@ -124,9 +115,17 @@ def create_feedback_index():
             name="notes",
             type=SearchFieldDataType.String,
         ),
+        # Source URL for citations
+        SimpleField(
+            name="source_url",
+            type=SearchFieldDataType.String,
+            filterable=False,
+        ),
     ]
     
+    # Semantic search configuration
     semantic_settings = SemanticSearch(
+        default_configuration_name=SEMANTIC_CONFIG_NAME,
         configurations=[
             SemanticConfiguration(
                 name=SEMANTIC_CONFIG_NAME,
@@ -145,7 +144,11 @@ def create_feedback_index():
         ]
     )
 
-    index = SearchIndex(name=INDEX_NAME, fields=fields, semantic_search=semantic_settings)
+    index = SearchIndex(
+        name=INDEX_NAME,
+        fields=fields,
+        semantic_search=semantic_settings,
+    )
 
     try:
         client.get_index(INDEX_NAME)

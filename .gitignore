@@ -42,12 +42,6 @@ ENV/
 # Checkpoints (workflow state persistence)
 .checkpoints/
 
-# Microsoft Agent Framework samples (for reference only)
-learn/
-
-# Legacy code (MAF-based implementation)
-legacy/
-
 # Logs
 *.log
 logs/

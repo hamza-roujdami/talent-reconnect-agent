@@ -1,14 +1,12 @@
-# Talent Reconnect Agent - Foundry Declarative Workflows
+# Talent Reconnect Agent - Foundry Agent SDK (no MAF)
 # Install with: pip install -r requirements.txt --pre
 
-# Core Foundry SDK
-azure-ai-projects>=1.0.0b6
-azure-ai-agents>=1.0.0b3
-agent-framework>=1.0.0b251114
-agent-framework-azure-ai>=1.0.0b251114
+# Azure AI Projects SDK (for Foundry agents)
+azure-ai-projects>=2.0.0b3
+azure-ai-agents>=1.0.0b1
+azure-identity>=1.19.0
 
 # Azure Services
-azure-identity>=1.19.0
 azure-search-documents>=11.6.0
 aiohttp>=3.9.0
 
@@ -16,6 +14,9 @@ aiohttp>=3.9.0
 opentelemetry-api>=1.20.0
 opentelemetry-sdk>=1.20.0
 azure-monitor-opentelemetry>=1.0.0
+
+# Data generation (for data/ scripts)
+faker>=28.0.0
 
 # Development
 python-dotenv>=1.0.0

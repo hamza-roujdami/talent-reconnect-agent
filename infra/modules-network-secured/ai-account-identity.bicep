@@ -8,6 +8,13 @@ param modelCapacity int
 param agentSubnetId string
 param networkInjection string = 'true'
 
+// Embedding model parameters
+param embeddingModelName string = 'text-embedding-3-small'
+param embeddingModelVersion string = '1'
+param embeddingModelSkuName string = 'Standard'
+param embeddingModelCapacity int = 120
+param deployEmbeddingModel bool = true
+
 #disable-next-line BCP036
 resource account 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
   name: accountName
@@ -58,7 +65,29 @@ resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-
   }
 }
 
+// Embedding model deployment for vector search
+#disable-next-line BCP081
+resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = if (deployEmbeddingModel) {
+  parent: account
+  name: embeddingModelName
+  sku: {
+    capacity: embeddingModelCapacity
+    name: embeddingModelSkuName
+  }
+  properties: {
+    model: {
+      name: embeddingModelName
+      format: 'OpenAI'
+      version: embeddingModelVersion
+    }
+  }
+  dependsOn: [
+    modelDeployment
+  ]
+}
+
 output accountName string = account.name
 output accountID string = account.id
 output accountTarget string = account.properties.endpoint
 output accountPrincipalId string = account.identity.principalId
+output embeddingDeploymentName string = deployEmbeddingModel ? embeddingModelName : ''

@@ -1,15 +1,18 @@
 # Talent Reconnect Agent
 
-AI-powered Talent Acquisition Agent using **Microsoft Agent Framework (MAF)** and **Azure AI Search**
+AI-powered recruiting assistant using **Microsoft Foundry**. 
 
 > ⚠️ **Demo purposes only** - Not intended for production use.
 
 ---
 
-## Demo Flow
+## Overview
 
+Multi-agent recruiting workflow that helps find candidates, review interview history, and draft outreach emails.
 
-`User needs ML engineer → Orchestrator routes to ProfileAgent for JD → SearchAgent queries Azure AI Search → InsightsAgent reviews interview history → OutreachAgent drafts the email.`
+```
+User → Orchestrator → Specialist Agents → Azure AI Search
+```
 
 ---
 
@@ -17,15 +20,15 @@ AI-powered Talent Acquisition Agent using **Microsoft Agent Framework (MAF)** an
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Orchestrator                               │
-│            (Routes requests to specialists)                     │
+│                      Orchestrator (TalentHub)                   │
+│                  Routes requests to specialists                 │
 └─────────────────────────────────────────────────────────────────┘
          │              │              │              │
          ▼              ▼              ▼              ▼
-┌─────────────┐ ┌─────────────┐ ┌──────────────┐┌─────────────┐
-│  Profile    │ │   Search    │ │   Insights   ││  Outreach   │
-│   Agent     │ │   Agent     │ │    Agent     ││   Agent     │
-└─────────────┘ └─────────────┘ └──────────────┘└─────────────┘
+┌─────────────┐ ┌─────────────┐ ┌──────────────┐ ┌─────────────┐
+│ RoleCrafter │ │ TalentScout │ │ InsightPulse │ │ ConnectPilot│
+│  (profile)  │ │  (search)   │ │  (insights)  │ │  (outreach) │
+└─────────────┘ └─────────────┘ └──────────────┘ └─────────────┘
                       │              │
                       ▼              ▼
               ┌─────────────┐ ┌─────────────┐
@@ -35,79 +38,53 @@ AI-powered Talent Acquisition Agent using **Microsoft Agent Framework (MAF)** an
               └─────────────┘ └─────────────┘
 ```
 
-**Under the hood**
-- **Agents** are instantiated via Microsoft Agent Framework’s `HandoffBuilder` on top of Foundry’s GPT‑4o mini deployment. Each specialist carries purpose-built instructions plus zero- or low-temperature sampling so they stay deterministic during the demo.
-- **Search context** comes from tool-based Azure AI Search integration. The `search_candidates` tool in [tools/candidate_search.py](tools/candidate_search.py) queries the Resume index, while [tools/feedback_lookup.py](tools/feedback_lookup.py) handles Feedback lookups. Data is hydrated via scripts in [data/](data/README.md).
-- **Tools** (e.g., `search_candidates`, `send_outreach_email`, `lookup_feedback_by_ids`) live in the [tools/](tools/) directory. They're regular Python callables exposed to the Agent Framework so LLM responses can invoke them deterministically.
-- **API + UI** are served via FastAPI (`main.py` + [api/routes.py](api/routes.py)) with Server-Sent Events streaming into [static/index.html](static/index.html). Pending-request TTLs and the scripted demo panel keep the workflow predictable for exec demos.
-- **Tests/Demos** run straight against the workflow: [tests/test_demo.py](tests/test_demo.py) replays the five-step scenario, while [tests/test_agents.py](tests/test_agents.py) covers unit tests for agent wiring.
-- **Checkpointing** is enabled via MAF's `FileCheckpointStorage`. Workflow state persists to `.checkpoints/` so conversations can survive server restarts (see `api/routes.py`).
-- **Observability** sends traces and dependencies to Azure Application Insights via OpenTelemetry (see `observability.py`).
+### Agents
 
----
-
-## Observability
-
-Telemetry is sent to Azure Application Insights when `APPLICATIONINSIGHTS_CONNECTION_STRING` is set in `.env`.
-
-**What's captured:**
-- **Traces** – Agent activity, handoffs, tool calls
-- **Dependencies** – Azure AI Search queries, LLM requests
-
-**View in Azure Portal:**
-1. Go to your Application Insights resource
-2. **Transaction search** → Filter by `traces` or `dependencies`
-3. **Application map** → See service dependencies visually
-
-**Disable:** Remove `APPLICATIONINSIGHTS_CONNECTION_STRING` from `.env` or leave it empty.
-
----
-
-## Environment Variables
-
-> Copy `.env.example` to `.env` and replace each placeholder before running any scripts.
-
-- `AZURE_SEARCH_MODE=agentic` and `AZURE_FEEDBACK_MODE=agentic` (default in `.env.example`) force both resume and feedback retrieval paths into knowledge-base/agentic mode. Switch them back to `semantic` if you prefer vector search with semantic configs.
-
----
-
-## Data Setup
-
-Scripts for Azure AI Search live under `data/`.
-
-```bash
-# 1. Create indexes
-python data/01-create-index.py           # resumes index
-python data/03-create-feedback-index.py  # optional feedback index
-
-# 2. Upload data
-python data/02-push-data.py --count 100000                           # synthetic resumes
-python data/04-push-feedback-data.py --total-feedback 60000          # optional interview feedback corpus
-
-# 3. Verify
-python data/05-resumes-semantic-harness.py "Find Senior Python developers in Dubai"
-python data/07-feedback-semantic-harness.py "Which candidates carry no-hire red flags?"
-```
+| Agent | Key | Purpose |
+|-------|-----|---------|
+| **TalentHub** | `orchestrator` | Routes requests to specialists |
+| **RoleCrafter** | `profile` | Defines job requirements |
+| **TalentScout** | `search` | Finds candidates via Azure AI Search |
+| **InsightPulse** | `insights` | Reviews interview feedback |
+| **ConnectPilot** | `outreach` | Drafts personalized emails |
 
 ---
 
 ## Quick Start
 
 ```bash
-# Setup
+# 1. Setup environment
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env  # Edit with your credentials
 
-# Run
-python chat_multi.py        # Multi-agent terminal chat
-python main.py              # FastAPI server + browser UI on :8000
+# 2. Create indexes and upload data
+python data/01-create-index.py
+python data/02-push-data.py --count 1000
+python data/03-create-feedback-index.py
+python data/04-push-feedback-data.py
 
-# Tests
-python tests/test_demo.py              # Scripted 5-step hiring demo
-pytest tests/test_agents.py -v         # Agent unit tests
-pytest tests/test_search.py -v         # Search integration tests (requires Azure)
+# 3. Run tests
+pytest tests/agents/ -v                           # Unit tests
+PYTHONPATH=. python tests/e2e/test_workflow.py    # Full workflow
 ```
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env`:
+
+| Variable | Description |
+|----------|-------------|
+| `PROJECT_ENDPOINT` | Azure AI Foundry project endpoint |
+| `FOUNDRY_MODEL_PRIMARY` | Model deployment (e.g., `gpt-4o-mini`) |
+| `AZURE_SEARCH_ENDPOINT` | Azure AI Search endpoint |
+| `AZURE_SEARCH_API_KEY` | Azure AI Search admin key |
+| `SEARCH_RESUME_INDEX` | Resume index name (default: `resumes`) |
+| `SEARCH_FEEDBACK_INDEX` | Feedback index name (default: `feedback`) |
+| `USE_BUILTIN_SEARCH` | `true` for built-in search tool, `false` for FunctionTool |
+| `AZURE_AI_SEARCH_CONNECTION_NAME` | Foundry connection name (if `USE_BUILTIN_SEARCH=true`) |
 
 ---
 
@@ -115,66 +92,120 @@ pytest tests/test_search.py -v         # Search integration tests (requires Azur
 
 ```
 talent-reconnect-agent/
-├── .checkpoints/           # Workflow state persistence (ignored in git)
-├── chat_multi.py           # Multi-agent terminal chat
-├── main.py                 # FastAPI server
-├── agents/
-│   ├── factory.py          # create_recruiting_workflow()
-│   ├── profile_agent.py
-│   ├── search_agent.py
-│   ├── insights_agent.py
-│   └── outreach_agent.py
-├── data/                   # Azure AI Search setup scripts & harnesses
-│   ├── 05-resumes-semantic-harness.py   # resumes semantic validation
-│   ├── 06-resumes-agentic-harness.py    # resumes agentic validation
-│   ├── 07-feedback-semantic-harness.py  # feedback semantic validation
-│   └── 08-feedback-agentic-harness.py   # feedback agentic validation
-├── tests/                  # Test suite
-│   ├── conftest.py         # pytest fixtures
-│   ├── test_demo.py        # scripted 5-step hiring demo
-│   ├── test_agents.py      # agent unit tests
-│   ├── test_search.py      # search integration tests
-│   ├── test_api.py         # API endpoint tests
-│   └── utils/              # test utilities
-├── tools/
-│   ├── candidate_search.py # Azure AI Search candidate lookup
-│   ├── feedback_lookup.py  # Feedback lookup
-│   └── outreach_email.py   # Outreach drafts
+├── .env.example              # Environment template
+├── requirements.txt          # Python dependencies
+│
+├── src/
+│   ├── agents/               # Agent definitions
+│   │   ├── factory.py        # AgentFactory class
+│   │   ├── definitions.py    # Agent assembly with tools
+│   │   ├── tools.py          # FunctionTool schemas
+│   │   ├── orchestrator.py   # TalentHub + routing
+│   │   ├── profile.py        # RoleCrafter agent
+│   │   ├── search.py         # TalentScout agent
+│   │   ├── insights.py       # InsightPulse agent
+│   │   └── outreach.py       # ConnectPilot agent
+│   ├── tools/                # Tool implementations
+│   │   ├── search.py         # Candidate search
+│   │   └── feedback.py       # Feedback lookup
+│   └── static/
+│       └── index.html        # Demo UI
+│
+├── tests/                    # Test suite
+│   ├── conftest.py           # Shared fixtures
+│   ├── agents/               # Agent tests
+│   │   ├── test_routing.py   # Routing logic
+│   │   └── test_factory.py   # Factory tests
+│   ├── tools/                # Tool tests
+│   │   ├── test_search.py    # Search tool
+│   │   └── test_feedback.py  # Feedback tool
+│   └── e2e/                  # End-to-end tests
+│       └── test_workflow.py  # Full workflow
+│
+├── data/                     # Azure AI Search setup
+│   ├── 01-create-index.py    # Create resumes index
+│   ├── 02-push-data.py       # Upload synthetic resumes
+│   ├── 03-create-feedback-index.py  # Create feedback index
+│   ├── 04-push-feedback-data.py     # Upload feedback data
+│   └── README.md
+│
+└── infra/                    # Bicep infrastructure (optional)
+    ├── main.bicep            # Core AI resources
+    ├── app-hosting.bicep     # Container Apps, APIM
+    ├── network-security.bicep # App Gateway, WAF
+    └── modules-network-secured/
 ```
 
 ---
 
-## Demo Script
+## Data Setup
 
-Copy and paste these prompts in order to test the full workflow:
+Azure AI Search indexes for candidates and interview feedback:
 
 ```bash
-# Start the CLI
-python chat_multi.py
+# Create indexes (semantic search enabled)
+python data/01-create-index.py
+python data/03-create-feedback-index.py
+
+# Upload synthetic data
+python data/02-push-data.py --count 1000        # 1K resumes
+python data/04-push-feedback-data.py            # Feedback for each
+
+# Preview without uploading
+python data/02-push-data.py --count 100 --dry-run
 ```
 
-| Step | Prompt | Agent |
-|------|--------|-------|
-| 1️⃣ Define role | `Hire a Data Engineer in Dubai` | RoleCrafter |
-| 2️⃣ Refine | `Add Azure to the required skills` | RoleCrafter |
-| 3️⃣ Approve | `yes` | TalentScout |
-| 4️⃣ Details | `Show details for candidates 1, 2 and 3` | TalentScout |
-| 5️⃣ Feedback | `Check interview feedback for candidates 1 and 2` | InsightPulse |
-| 6️⃣ Outreach | `Send email to candidate 1` | ConnectPilot |
+See [data/README.md](data/README.md) for details.
 
-**Raw prompts (copy all):**
-```
-Hire a Data Engineer in Dubai
-Add Azure to the required skills
-yes
-Show details for candidates 1, 2 and 3
-Check interview feedback for candidates 1 and 2
-Send email to candidate 1
-quit
+---
+
+## Testing
+
+```bash
+# Unit tests (no Azure needed)
+pytest tests/agents/test_routing.py -v
+
+# Tool tests (needs Azure AI Search)
+pytest tests/tools/ -v
+
+# Full e2e workflow (needs Azure AI Foundry + Search)
+PYTHONPATH=. python tests/e2e/test_workflow.py
+
+# All tests
+pytest tests/ -v
 ```
 
 ---
 
-## License
+## Infrastructure (Optional)
 
-MIT
+Enterprise-grade Bicep templates in `infra/`:
+
+- **Core AI**: AI Foundry, Cosmos DB, AI Search, Storage
+- **App Hosting**: Container Apps, API Management, App Insights
+- **Networking**: VNet, App Gateway + WAF, Private Endpoints
+
+See [infra/README.md](infra/README.md) for deployment instructions.
+
+---
+
+## Usage Example
+
+```python
+import asyncio
+from src.agents import AgentFactory
+
+async def main():
+    async with AgentFactory() as factory:
+        # Direct agent call
+        response = await factory.chat("Find Python developers in Dubai", "search")
+        print(response)
+        
+        # Auto-routing
+        response, agent = await factory.orchestrate("What feedback do we have on Ahmed?")
+        print(f"Routed to: {agent}")
+        print(response)
+
+asyncio.run(main())
+```
+---

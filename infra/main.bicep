@@ -47,6 +47,18 @@ param modelSkuName string = 'GlobalStandard'
 @description('The tokens per minute (TPM) of your model deployment')
 param modelCapacity int = 30
 
+// Embedding model deployment parameters
+@description('Whether to deploy an embedding model for vector search')
+param deployEmbeddingModel bool = true
+@description('The name of the embedding model to deploy')
+param embeddingModelName string = 'text-embedding-3-small'
+@description('The version of the embedding model')
+param embeddingModelVersion string = '1'
+@description('The SKU name for the embedding model deployment')
+param embeddingModelSkuName string = 'Standard'
+@description('The capacity (TPM in thousands) for the embedding model')
+param embeddingModelCapacity int = 120
+
 // Create a short, unique suffix, that will be unique to each resource group
 // Using static values to avoid ARM template validation issues
 var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 4)
@@ -185,6 +197,12 @@ module aiAccount 'modules-network-secured/ai-account-identity.bicep' = {
     modelSkuName: modelSkuName
     modelCapacity: modelCapacity
     agentSubnetId: vnet.outputs.agentSubnetId
+    // Embedding model parameters
+    deployEmbeddingModel: deployEmbeddingModel
+    embeddingModelName: embeddingModelName
+    embeddingModelVersion: embeddingModelVersion
+    embeddingModelSkuName: embeddingModelSkuName
+    embeddingModelCapacity: embeddingModelCapacity
   }
 }
 /*

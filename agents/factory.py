@@ -217,8 +217,8 @@ class AgentFactory:
     
     async def _execute_tool(self, name: str, arguments: str) -> str:
         """Execute a FunctionTool and return result as JSON string."""
-        from src.tools.search import search_candidates
-        from src.tools.feedback import lookup_feedback
+        from tools.search import search_candidates
+        from tools.feedback import lookup_feedback
         
         try:
             args = json.loads(arguments) if arguments else {}

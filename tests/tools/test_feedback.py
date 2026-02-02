@@ -2,7 +2,7 @@
 
 import json
 import pytest
-from src.tools.feedback import lookup_feedback
+from tools.feedback import lookup_feedback
 
 
 class TestLookupFeedback:

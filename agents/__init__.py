@@ -1,7 +1,7 @@
 """Talent Reconnect Agents - Foundry V2 SDK.
 
 Usage:
-    from src.agents import AgentFactory, create_factory
+    from agents import AgentFactory, create_factory
     
     async with create_factory() as factory:
         response = await factory.chat("Find Python developers")

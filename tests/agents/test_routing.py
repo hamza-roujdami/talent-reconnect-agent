@@ -1,7 +1,7 @@
 """Test agent routing logic."""
 
 import pytest
-from src.agents.orchestrator import route
+from agents.orchestrator import route
 
 
 class TestRouting:

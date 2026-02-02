@@ -2,7 +2,7 @@
 
 import json
 import pytest
-from src.tools.search import search_candidates
+from tools.search import search_candidates
 
 
 class TestSearchCandidates:

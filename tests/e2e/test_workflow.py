@@ -11,7 +11,7 @@ Or standalone:
 
 import asyncio
 import pytest
-from src.agents import AgentFactory
+from agents import AgentFactory
 
 
 @pytest.mark.asyncio

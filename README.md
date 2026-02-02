@@ -193,7 +193,7 @@ See [infra/README.md](infra/README.md) for deployment instructions.
 
 ```python
 import asyncio
-from src.agents import AgentFactory
+from agents import AgentFactory
 
 async def main():
     async with AgentFactory() as factory:

@@ -1,8 +1,8 @@
 """Test agent factory and workflow."""
 
 import pytest
-from src.agents import AgentFactory, AGENTS
-from src.agents.definitions import get_agent_definitions, AGENT_KEYS
+from agents import AgentFactory, AGENTS
+from agents.definitions import get_agent_definitions, AGENT_KEYS
 
 
 class TestAgentDefinitions:
@@ -38,12 +38,12 @@ class TestAgentImports:
 
     def test_import_factory(self):
         """Can import AgentFactory."""
-        from src.agents import AgentFactory
+        from agents import AgentFactory
         assert AgentFactory is not None
 
     def test_import_agent_modules(self):
         """Can import individual agent modules."""
-        from src.agents import orchestrator, profile, search, insights, outreach
+        from agents import orchestrator, profile, search, insights, outreach
         
         # Each module should have get_config
         assert hasattr(orchestrator, "get_config")

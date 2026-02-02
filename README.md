@@ -95,45 +95,40 @@ talent-reconnect-agent/
 ├── .env.example              # Environment template
 ├── requirements.txt          # Python dependencies
 │
-├── src/
-│   ├── agents/               # Agent definitions
-│   │   ├── factory.py        # AgentFactory class
-│   │   ├── definitions.py    # Agent assembly with tools
-│   │   ├── tools.py          # FunctionTool schemas
-│   │   ├── orchestrator.py   # TalentHub + routing
-│   │   ├── profile.py        # RoleCrafter agent
-│   │   ├── search.py         # TalentScout agent
-│   │   ├── insights.py       # InsightPulse agent
-│   │   └── outreach.py       # ConnectPilot agent
-│   ├── tools/                # Tool implementations
-│   │   ├── search.py         # Candidate search
-│   │   └── feedback.py       # Feedback lookup
-│   └── static/
-│       └── index.html        # Demo UI
+├── agents/                   # Agent definitions
+│   ├── factory.py            # AgentFactory class
+│   ├── definitions.py        # Agent assembly with tools
+│   ├── tools.py              # FunctionTool schemas
+│   ├── orchestrator.py       # TalentHub + routing
+│   ├── profile.py            # RoleCrafter agent
+│   ├── search.py             # TalentScout agent
+│   ├── insights.py           # InsightPulse agent
+│   └── outreach.py           # ConnectPilot agent
+│
+├── tools/                    # Tool implementations
+│   ├── search.py             # Candidate search
+│   └── feedback.py           # Feedback lookup
+│
+├── static/
+│   └── index.html            # Demo UI
 │
 ├── tests/                    # Test suite
 │   ├── conftest.py           # Shared fixtures
 │   ├── agents/               # Agent tests
-│   │   ├── test_routing.py   # Routing logic
-│   │   └── test_factory.py   # Factory tests
 │   ├── tools/                # Tool tests
-│   │   ├── test_search.py    # Search tool
-│   │   └── test_feedback.py  # Feedback tool
 │   └── e2e/                  # End-to-end tests
-│       └── test_workflow.py  # Full workflow
 │
 ├── data/                     # Azure AI Search setup
 │   ├── 01-create-index.py    # Create resumes index
 │   ├── 02-push-data.py       # Upload synthetic resumes
-│   ├── 03-create-feedback-index.py  # Create feedback index
-│   ├── 04-push-feedback-data.py     # Upload feedback data
+│   ├── 03-create-feedback-index.py
+│   ├── 04-push-feedback-data.py
 │   └── README.md
 │
 └── infra/                    # Bicep infrastructure (optional)
     ├── main.bicep            # Core AI resources
     ├── app-hosting.bicep     # Container Apps, APIM
-    ├── network-security.bicep # App Gateway, WAF
-    └── modules-network-secured/
+    └── network-security.bicep
 ```
 
 ---

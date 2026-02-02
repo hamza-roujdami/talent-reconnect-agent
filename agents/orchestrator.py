@@ -41,7 +41,7 @@ def route(message: str) -> str:
         return "insights"
     if any(w in msg for w in ["email", "outreach", "contact", "reach out", "message"]):
         return "outreach"
-    if any(w in msg for w in ["role", "job", "requirements", "profile", "define", "hiring"]):
+    if any(w in msg for w in ["role", "job", "requirements", "profile", "define", "hiring", "hire"]):
         return "profile"
     
     return "orchestrator"

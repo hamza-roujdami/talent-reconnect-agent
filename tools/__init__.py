@@ -1,9 +1,9 @@
 """Tool implementations for Talent Reconnect agents.
 
-These tools connect to Azure AI Search to provide real data.
+Note: Search and feedback use built-in AzureAISearchAgentTool.
+Only email tool is used directly via FunctionTool.
 """
 
-from .search import search_candidates
-from .feedback import lookup_feedback
+from .email import send_outreach_email
 
-__all__ = ["search_candidates", "lookup_feedback"]
+__all__ = ["send_outreach_email"]

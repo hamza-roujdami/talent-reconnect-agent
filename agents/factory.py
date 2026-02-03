@@ -1,6 +1,7 @@
 """Foundry V2 Agent Factory.
 
 Manages agent lifecycle and chat interactions with Azure AI Foundry.
+Uses built-in AzureAISearchAgentTool for search operations.
 
 Usage:
     async with AgentFactory() as factory:
@@ -9,7 +10,6 @@ Usage:
 """
 
 import os
-import json
 from dataclasses import dataclass, field
 from typing import AsyncIterator
 from contextlib import asynccontextmanager
@@ -31,9 +31,6 @@ load_dotenv()
 
 # Connection name (from Foundry project connections)
 SEARCH_CONNECTION_NAME = os.environ.get("AZURE_AI_SEARCH_CONNECTION_NAME", "")
-
-# Toggle between built-in and function tool approaches
-USE_BUILTIN_SEARCH = os.environ.get("USE_BUILTIN_SEARCH", "false").lower() == "true"
 
 
 # =============================================================================
@@ -101,30 +98,26 @@ class AgentFactory:
         )
         self._openai = self._client.get_openai_client()
         
-        # Get Azure AI Search connection ID if using built-in search tool
-        if USE_BUILTIN_SEARCH:
-            if SEARCH_CONNECTION_NAME:
-                try:
-                    connection = await self._client.connections.get(SEARCH_CONNECTION_NAME)
-                    self._search_connection_id = connection.id
-                    print(f"✓ Search connection: {SEARCH_CONNECTION_NAME}")
-                except Exception as e:
-                    raise RuntimeError(
-                        f"Failed to get search connection '{SEARCH_CONNECTION_NAME}'. "
-                        f"Error: {e}"
-                    )
-            else:
-                raise RuntimeError(
-                    "USE_BUILTIN_SEARCH=true requires AZURE_AI_SEARCH_CONNECTION_NAME. "
-                    "Create a connection in your Foundry project and set this variable."
-                )
-        else:
-            print("✓ Using FunctionTool with API key auth")
+        # Get Azure AI Search connection ID (required)
+        if not SEARCH_CONNECTION_NAME:
+            raise RuntimeError(
+                "AZURE_AI_SEARCH_CONNECTION_NAME required. "
+                "Create a connection in your Foundry project and set this variable."
+            )
         
-        # Get agent definitions
+        try:
+            connection = await self._client.connections.get(SEARCH_CONNECTION_NAME)
+            self._search_connection_id = connection.id
+            print(f"✓ Search connection: {SEARCH_CONNECTION_NAME}")
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get search connection '{SEARCH_CONNECTION_NAME}'. "
+                f"Error: {e}"
+            )
+        
+        # Get agent definitions with built-in search tools
         definitions = get_agent_definitions(
             search_connection_id=self._search_connection_id,
-            use_builtin_search=USE_BUILTIN_SEARCH,
         )
         
         # Always create new versions to pick up instruction changes
@@ -195,66 +188,8 @@ class AgentFactory:
             extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
         )
         
-        # If using built-in search, Foundry handles tools
-        if USE_BUILTIN_SEARCH:
-            return response.output_text or ""
-        
-        # Otherwise, check for function calls and execute them
-        tool_calls = [item for item in response.output if item.type == "function_call"]
-        
-        if not tool_calls:
-            return response.output_text or ""
-        
-        # Execute tools and collect results
-        tool_results = []
-        for tool_call in tool_calls:
-            result = await self._execute_tool(tool_call.name, tool_call.arguments)
-            tool_results.append({
-                "type": "function_call_output",
-                "call_id": tool_call.call_id,
-                "output": result,
-            })
-        
-        # Continue conversation with tool results
-        followup = await self._openai.responses.create(
-            input=tool_results,
-            previous_response_id=response.id,
-            extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
-        )
-        
-        return followup.output_text or ""
-    
-    async def _execute_tool(self, name: str, arguments: str) -> str:
-        """Execute a FunctionTool and return result as JSON string."""
-        from tools.search import search_candidates
-        from tools.feedback import lookup_feedback
-        from tools.email import send_outreach_email
-        
-        try:
-            args = json.loads(arguments) if arguments else {}
-        except json.JSONDecodeError:
-            args = {}
-        
-        if name == "search_candidates":
-            return search_candidates(
-                query=args.get("query", ""),
-                location=args.get("location"),
-                top=10,
-            )
-        elif name == "lookup_feedback":
-            return lookup_feedback(
-                candidate_id=args.get("candidate_id"),
-                candidate_name=args.get("candidate_name"),
-            )
-        elif name == "send_outreach_email":
-            return send_outreach_email(
-                candidate_name=args.get("candidate_name", "Candidate"),
-                candidate_email=args.get("candidate_email"),
-                subject=args.get("subject"),
-                body=args.get("body"),
-            )
-        else:
-            return json.dumps({"error": f"Unknown tool: {name}"})
+        # Foundry handles built-in search tools automatically
+        return response.output_text or ""
     
     async def chat_stream(self, message: str, agent_key: str = "orchestrator") -> AsyncIterator[str]:
         """Stream a response from an agent."""

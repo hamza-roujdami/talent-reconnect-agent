@@ -20,8 +20,8 @@ User → Orchestrator → Specialist Agents → Azure AI Search
 |---------|------------|
 | **Multi-Agent Orchestration** | Foundry Agents (Responses API), `azure-ai-projects`, `azure-ai-agents` |
 | **Model Inference** | Azure OpenAI (`gpt-4o-mini`) via Foundry |
-| **Candidate Search** | Azure AI Search (semantic ranking, 100K+ resumes) |
-| **Feedback Lookup** | Azure AI Search (semantic ranking, interview feedback) |
+| **Candidate Search** | `AzureAISearchAgentTool` (built-in, semantic ranking) |
+| **Feedback Lookup** | `AzureAISearchAgentTool` (built-in, semantic ranking) |
 | **Session Persistence** | Azure Cosmos DB (with in-memory fallback) |
 | **Observability** | `AIAgentsInstrumentor`, Azure Monitor, App Insights |
 | **Content Safety** | Foundry Guardrails (`Microsoft.DefaultV2` policy) |

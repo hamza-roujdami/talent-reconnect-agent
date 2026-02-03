@@ -59,6 +59,7 @@ def search_candidates(
         search_text += " " + " ".join(skills)
     
     try:
+        # Use semantic search (requires Standard tier + semantic enabled)
         results = client.search(
             search_text=search_text,
             query_type="semantic",
@@ -76,9 +77,9 @@ def search_candidates(
                 "title": result.get("current_title"),
                 "company": result.get("current_company"),
                 "location": result.get("location"),
-                "skills": result.get("skills", [])[:10],  # Limit skills
+                "skills": result.get("skills", [])[:10],
                 "experience_years": result.get("experience_years"),
-                "summary": result.get("summary", "")[:200],  # Truncate summary
+                "summary": result.get("summary", "")[:200],
             })
         
         if not candidates:

@@ -1,6 +1,6 @@
 # Talent Reconnect Agent
 
-AI-powered recruiting assistant using **Microsoft Foundry**. 
+AI-powered recruiting assistant using **Azure AI Foundry** and the **Responses API**.
 
 > ⚠️ **Demo purposes only** - Not intended for production use.
 
@@ -13,6 +13,14 @@ Multi-agent recruiting workflow that helps find candidates, review interview his
 ```
 User → Orchestrator → Specialist Agents → Azure AI Search
 ```
+
+**Features:**
+- 🎯 Multi-agent orchestration with handoff routing
+- 🔍 Semantic search across 100K+ resumes
+- 📋 Interview feedback history
+- ✉️ Personalized outreach emails
+- 🌐 FastAPI server with SSE streaming
+- 💾 Cosmos DB session persistence (with in-memory fallback)
 
 ---
 
@@ -43,7 +51,7 @@ User → Orchestrator → Specialist Agents → Azure AI Search
 | Agent | Key | Purpose |
 |-------|-----|---------|
 | **TalentHub** | `orchestrator` | Routes requests to specialists |
-| **RoleCrafter** | `profile` | Defines job requirements |
+| **RoleCrafter** | `profile` | Defines job requirements, generates candidate profile |
 | **TalentScout** | `search` | Finds candidates via Azure AI Search |
 | **InsightPulse** | `insights` | Reviews interview feedback |
 | **ConnectPilot** | `outreach` | Drafts personalized emails |
@@ -52,22 +60,70 @@ User → Orchestrator → Specialist Agents → Azure AI Search
 
 ## Quick Start
 
+### Prerequisites
+
+- Python 3.11+
+- Azure subscription with:
+  - Azure AI Foundry project
+  - Azure AI Search (Standard tier for semantic search)
+  - Azure Cosmos DB (optional, for session persistence)
+
+### Setup
+
 ```bash
-# 1. Setup environment
+# 1. Clone and setup environment
+git clone https://github.com/your-org/talent-reconnect-agent.git
+cd talent-reconnect-agent
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # Edit with your credentials
 
-# 2. Create indexes and upload data
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your Azure credentials
+
+# 3. Create search indexes and upload data
 python data/01-create-index.py
-python data/02-push-data.py --count 1000
+python data/02-push-data.py --count 10000
 python data/03-create-feedback-index.py
 python data/04-push-feedback-data.py
 
-# 3. Run tests
-pytest tests/agents/ -v                           # Unit tests
-PYTHONPATH=. python tests/e2e/test_workflow.py    # Full workflow
+# 4. Run the app
+python main.py
+# Open http://localhost:8000
 ```
+
+---
+
+## Infrastructure Deployment
+
+Two deployment options in `infra/`:
+
+| Mode | Folder | Description |
+|------|--------|-------------|
+| **🌐 Public** | `infra/public/` | All public endpoints - fast, simple, great for demos |
+| **🔒 Private** | `infra/private/` | VNet + Private Endpoints + WAF - enterprise-ready |
+
+### Public (Recommended for Demos)
+
+```bash
+cd infra/public
+./deploy.sh rg-talent-reconnect swedencentral
+```
+
+Deploys: AI Foundry, AI Search, Cosmos DB, Container Apps, APIM, App Insights
+
+### Private (Enterprise)
+
+```bash
+cd infra/private
+az deployment group create -g rg-talent-reconnect -f main.bicep -p main.bicepparam
+az deployment group create -g rg-talent-reconnect -f network-security.bicep -p network-security.bicepparam
+az deployment group create -g rg-talent-reconnect -f app-hosting.bicep -p app-hosting.bicepparam
+```
+
+Adds: VNet, Private Endpoints, App Gateway + WAF, NSGs
+
+See [infra/README.md](infra/README.md) for full details.
 
 ---
 
@@ -83,8 +139,7 @@ Copy `.env.example` to `.env`:
 | `AZURE_SEARCH_API_KEY` | Azure AI Search admin key |
 | `SEARCH_RESUME_INDEX` | Resume index name (default: `resumes`) |
 | `SEARCH_FEEDBACK_INDEX` | Feedback index name (default: `feedback`) |
-| `USE_BUILTIN_SEARCH` | `true` for built-in search tool, `false` for FunctionTool |
-| `AZURE_AI_SEARCH_CONNECTION_NAME` | Foundry connection name (if `USE_BUILTIN_SEARCH=true`) |
+| `COSMOS_ENDPOINT` | Cosmos DB endpoint (optional) |
 
 ---
 
@@ -92,31 +147,31 @@ Copy `.env.example` to `.env`:
 
 ```
 talent-reconnect-agent/
-├── .env.example              # Environment template
+├── main.py                   # FastAPI server entry point
+├── config.py                 # Environment configuration
 ├── requirements.txt          # Python dependencies
 │
 ├── agents/                   # Agent definitions
 │   ├── factory.py            # AgentFactory class
 │   ├── definitions.py        # Agent assembly with tools
-│   ├── tools.py              # FunctionTool schemas
 │   ├── orchestrator.py       # TalentHub + routing
-│   ├── profile.py            # RoleCrafter agent
-│   ├── search.py             # TalentScout agent
-│   ├── insights.py           # InsightPulse agent
-│   └── outreach.py           # ConnectPilot agent
+│   ├── profile_agent.py      # RoleCrafter agent
+│   ├── search_agent.py       # TalentScout agent
+│   ├── insights_agent.py     # InsightPulse agent
+│   └── outreach_agent.py     # ConnectPilot agent
 │
 ├── tools/                    # Tool implementations
-│   ├── search.py             # Candidate search
-│   └── feedback.py           # Feedback lookup
+│   ├── search_provider.py    # Candidate search (Azure AI Search)
+│   └── feedback_lookup.py    # Feedback lookup
+│
+├── api/                      # API routes
+│   └── routes.py             # FastAPI routes with SSE streaming
+│
+├── sessions/                 # Session persistence
+│   └── cosmos_store.py       # Cosmos DB + in-memory fallback
 │
 ├── static/
 │   └── index.html            # Demo UI
-│
-├── tests/                    # Test suite
-│   ├── conftest.py           # Shared fixtures
-│   ├── agents/               # Agent tests
-│   ├── tools/                # Tool tests
-│   └── e2e/                  # End-to-end tests
 │
 ├── data/                     # Azure AI Search setup
 │   ├── 01-create-index.py    # Create resumes index
@@ -125,10 +180,18 @@ talent-reconnect-agent/
 │   ├── 04-push-feedback-data.py
 │   └── README.md
 │
-└── infra/                    # Bicep infrastructure (optional)
-    ├── main.bicep            # Core AI resources
-    ├── app-hosting.bicep     # Container Apps, APIM
-    └── network-security.bicep
+├── infra/                    # Azure infrastructure
+│   ├── public/               # Public endpoints (demo)
+│   ├── private/              # Private networking (enterprise)
+│   └── README.md
+│
+├── evals/                    # Evaluation suite
+│   ├── golden_dataset.json   # Test cases
+│   └── test_*.py             # Evaluation tests
+│
+└── tests/                    # Test suite
+    ├── conftest.py
+    └── test_*.py
 ```
 
 ---
@@ -154,20 +217,31 @@ See [data/README.md](data/README.md) for details.
 
 ---
 
+## Demo Workflow
+
+1. **Define Role**: "Senior AI Engineer in Dubai"
+   - RoleCrafter generates a candidate profile immediately
+
+2. **Search Candidates**: "yes" (confirms profile)
+   - TalentScout searches 100K+ resumes
+
+3. **Check History**: "Check feedback for candidate 1"
+   - InsightPulse retrieves interview history
+
+4. **Draft Outreach**: "Send email to candidate 1"
+   - ConnectPilot drafts personalized email
+
+---
+
 ## Testing
 
 ```bash
-# Unit tests (no Azure needed)
-pytest tests/agents/test_routing.py -v
-
-# Tool tests (needs Azure AI Search)
-pytest tests/tools/ -v
-
-# Full e2e workflow (needs Azure AI Foundry + Search)
-PYTHONPATH=. python tests/e2e/test_workflow.py
-
-# All tests
+# Run all tests
 pytest tests/ -v
+
+# Specific test files
+pytest tests/test_agents.py -v
+pytest tests/test_api.py -v
 ```
 
 ---
@@ -176,9 +250,8 @@ pytest tests/ -v
 
 Enterprise-grade Bicep templates in `infra/`:
 
-- **Core AI**: AI Foundry, Cosmos DB, AI Search, Storage
-- **App Hosting**: Container Apps, API Management, App Insights
-- **Networking**: VNet, App Gateway + WAF, Private Endpoints
+- **Public Mode** (`infra/public/`): AI Foundry, Cosmos DB, AI Search, Container Apps, APIM
+- **Private Mode** (`infra/private/`): + VNet, App Gateway + WAF, Private Endpoints
 
 See [infra/README.md](infra/README.md) for deployment instructions.
 
@@ -203,4 +276,9 @@ async def main():
 
 asyncio.run(main())
 ```
+
 ---
+
+## License
+
+MIT License - Demo purposes only.

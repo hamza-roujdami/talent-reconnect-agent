@@ -35,13 +35,22 @@ def route(message: str) -> str:
     """
     msg = message.lower()
     
-    if any(w in msg for w in ["search", "find", "candidates", "look for", "who has"]):
+    # Search: explicit search intent
+    if any(w in msg for w in ["search", "find candidates", "look for candidates", "who has", "show me candidates"]):
         return "search"
-    if any(w in msg for w in ["feedback", "interview", "history", "insights", "scored"]):
+    # Insights: feedback and interview history
+    if any(w in msg for w in ["feedback", "interview", "history", "insights", "scored", "performance"]):
         return "insights"
-    if any(w in msg for w in ["email", "outreach", "contact", "reach out", "message"]):
+    # Outreach: contacting candidates
+    if any(w in msg for w in ["email", "outreach", "contact", "reach out", "message", "send"]):
         return "outreach"
-    if any(w in msg for w in ["role", "job", "requirements", "profile", "define", "hiring", "hire"]):
+    # Profile: hiring intent - catches job titles and hiring language
+    if any(w in msg for w in [
+        "role", "job", "requirements", "profile", "define", "hiring", "hire",
+        "looking for", "need a", "need an", "want to hire", "recruit",
+        "engineer", "manager", "developer", "designer", "analyst", "scientist",
+        "architect", "lead", "director", "specialist", "consultant",
+    ]):
         return "profile"
     
     return "orchestrator"

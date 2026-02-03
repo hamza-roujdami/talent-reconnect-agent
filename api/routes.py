@@ -1,21 +1,21 @@
-"""FastAPI routes with SSE streaming for chat."""
+"""FastAPI routes with SSE streaming for chat.
+
+Uses Cosmos DB for session persistence (falls back to in-memory if not configured).
+"""
 
 import json
 import uuid
-from datetime import datetime
 from typing import AsyncIterator
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from agents import AgentFactory
+from sessions.cosmos_store import create_session_store
 
 
 router = APIRouter()
-
-# In-memory session storage (use Redis/DB in production)
-sessions: dict[str, dict] = {}
 
 # Agent display names
 AGENT_NAMES = {
@@ -51,63 +51,66 @@ def sse_event(event_type: str, data: dict) -> str:
     return f"data: {json.dumps({'type': event_type, **data})}\n\n"
 
 
-async def stream_chat(factory: AgentFactory, message: str, session_id: str) -> AsyncIterator[str]:
+async def stream_chat(
+    factory: AgentFactory,
+    store,
+    message: str,
+    session_id: str,
+) -> AsyncIterator[str]:
     """Stream chat response as SSE events."""
-    
-    # Get or create session
-    if session_id not in sessions:
-        sessions[session_id] = {
-            "id": session_id,
-            "title": None,
-            "messages": [],
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-    
-    session = sessions[session_id]
     
     # Send session ID
     yield sse_event("session", {"session_id": session_id})
     
+    # Get history before adding user message
+    history = await store.get_history(session_id)
+    
     # Add user message to history
-    session["messages"].append({"role": "user", "content": message})
+    await store.add_message(session_id, "user", message)
     
-    # Set title from first message
-    if not session["title"]:
-        session["title"] = message[:50] + ("..." if len(message) > 50 else "")
-    
-    # Route to agent
+    # Route to agent - use context-aware routing
     agent_key = factory.route(message)
+    
+    # Sticky routing: if user gives a short response and we were on profile,
+    # stay on profile (they're likely adding details or confirming)
+    if agent_key == "orchestrator" and history:
+        last_agent = None
+        for msg in reversed(history):
+            if msg.get("role") == "assistant" and msg.get("agent"):
+                last_agent = msg.get("agent")
+                break
+        # FIRST: Check if user says "yes" to confirm profile → trigger search
+        if last_agent == "profile" and message.lower().strip() in ["yes", "yes!", "looks good", "correct", "proceed", "go ahead", "search", "find them", "find candidates"]:
+            agent_key = "search"
+        # THEN: If short message and was on profile, stay with profile (adding details)
+        elif last_agent == "profile" and len(message.split()) < 15:
+            agent_key = "profile"
+    
     agent_name = AGENT_NAMES.get(agent_key, agent_key)
     
     # Send agent activity
     yield sse_event("agent", {"name": agent_name, "key": agent_key})
     
     try:
-        # Get response (streaming would be ideal, but using simple for now)
-        response = await factory.chat(message, agent_key)
+        # Get response with conversation history
+        response = await factory.chat(message, agent_key, history=history or None)
         
         # Stream the response
         yield sse_event("text", {"content": response})
         
-        # Save to history
-        session["messages"].append({
-            "role": "assistant",
-            "content": response,
-            "agent": agent_key,
-        })
-        session["updated_at"] = datetime.utcnow().isoformat()
+        # Save assistant response to history
+        await store.add_message(session_id, "assistant", response, agent=agent_key)
         
     except Exception as e:
         yield sse_event("error", {"message": str(e)})
 
 
 # =============================================================================
-# Routes
+# Shared Instances
 # =============================================================================
 
-# Shared factory instance
 _factory: AgentFactory | None = None
+_store = None
 
 
 async def get_factory() -> AgentFactory:
@@ -119,15 +122,43 @@ async def get_factory() -> AgentFactory:
     return _factory
 
 
+async def get_store():
+    """Get or create session store instance.
+    
+    Falls back to in-memory if Cosmos DB initialization fails.
+    """
+    global _store
+    if _store is None:
+        from sessions.cosmos_store import create_session_store, InMemorySessionStore
+        
+        store_instance = create_session_store()
+        try:
+            await store_instance.initialize()
+            _store = store_instance
+            print("✓ Using Cosmos DB session storage")
+        except Exception as e:
+            print(f"⚠️  Session store init failed: {e}")
+            print("   Falling back to in-memory storage")
+            _store = InMemorySessionStore()
+            await _store.initialize()
+            print("✓ Using in-memory session storage")
+    return _store
+
+
+# =============================================================================
+# Routes
+# =============================================================================
+
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     """Stream chat response via SSE."""
     factory = await get_factory()
+    store = await get_store()
     
     session_id = request.session_id or str(uuid.uuid4())
     
     return StreamingResponse(
-        stream_chat(factory, request.message, session_id),
+        stream_chat(factory, store, request.message, session_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -140,36 +171,30 @@ async def chat_stream(request: ChatRequest):
 @router.get("/sessions")
 async def list_sessions():
     """List all chat sessions."""
-    session_list = []
-    for sid, session in sorted(
-        sessions.items(),
-        key=lambda x: x[1].get("updated_at", ""),
-        reverse=True,
-    ):
-        session_list.append({
-            "id": sid,
-            "title": session.get("title"),
-            "message_count": len(session.get("messages", [])),
-            "created_at": session.get("created_at"),
-            "updated_at": session.get("updated_at"),
-        })
-    return {"sessions": session_list}
+    store = await get_store()
+    sessions = await store.list_sessions(limit=50)
+    return {"sessions": sessions}
 
 
 @router.get("/session/{session_id}/history")
 async def get_session_history(session_id: str):
     """Get chat history for a session."""
-    session = sessions.get(session_id)
+    store = await get_store()
+    session = await store.get_session(session_id)
+    
     if not session:
         return {"messages": []}
+    
     return {"messages": session.get("messages", [])}
 
 
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str):
     """Delete a chat session."""
-    if session_id in sessions:
-        del sessions[session_id]
+    store = await get_store()
+    deleted = await store.delete_session(session_id)
+    
+    if deleted:
         return {"status": "deleted"}
     return {"status": "not_found"}
 
@@ -177,7 +202,12 @@ async def delete_session(session_id: str):
 @router.on_event("shutdown")
 async def shutdown():
     """Cleanup on shutdown."""
-    global _factory
+    global _factory, _store
+    
     if _factory:
         await _factory.cleanup()
         _factory = None
+    
+    if _store:
+        await _store.close()
+        _store = None

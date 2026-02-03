@@ -127,31 +127,19 @@ class AgentFactory:
             use_builtin_search=USE_BUILTIN_SEARCH,
         )
         
-        # Check for existing agents if persisting
-        existing = {}
-        if self.persist_agents:
-            async for agent in self._client.agents.list():
-                existing[agent.name] = agent
-        
-        # Create or reuse agents
+        # Always create new versions to pick up instruction changes
+        # (Foundry persists agents, but we want fresh instructions each time)
         for key, config in definitions.items():
-            if key in existing and self.persist_agents:
-                agent = existing[key]
-                latest = agent.versions.get("latest", {})
-                version = latest.get("version", 1)
-                self._agents[key] = Agent(name=agent.name, version=version, key=key)
-                print(f"✓ Reusing {key} (v{version})")
-            else:
-                agent = await self._client.agents.create_version(
-                    agent_name=key,
-                    definition=PromptAgentDefinition(
-                        model=self.model,
-                        instructions=config["instructions"],
-                        tools=config.get("tools", []),
-                    ),
-                )
-                self._agents[key] = Agent(name=agent.name, version=agent.version, key=key)
-                print(f"✓ Created {key} (v{agent.version})")
+            agent = await self._client.agents.create_version(
+                agent_name=key,
+                definition=PromptAgentDefinition(
+                    model=self.model,
+                    instructions=config["instructions"],
+                    tools=config.get("tools", []),
+                ),
+            )
+            self._agents[key] = Agent(name=agent.name, version=agent.version, key=key)
+            print(f"✓ Created {key} (v{agent.version})")
     
     async def cleanup(self):
         """Close connections (agents persist in Foundry)."""
@@ -174,14 +162,35 @@ class AgentFactory:
             except Exception as e:
                 print(f"  Error deleting {agent.key}: {e}")
     
-    async def chat(self, message: str, agent_key: str = "orchestrator") -> str:
-        """Send a message to an agent and get response."""
+    async def chat(self, message: str, agent_key: str = "orchestrator", history: list[dict] = None) -> str:
+        """Send a message to an agent and get response.
+        
+        Args:
+            message: Current user message
+            agent_key: Which agent to use
+            history: Optional conversation history [{"role": "user/assistant", "content": "..."}]
+        """
         agent = self._agents.get(agent_key)
         if not agent:
             raise ValueError(f"Unknown agent: {agent_key}")
         
+        # Build input with history if provided
+        if history:
+            # Format history for the model
+            input_messages = []
+            for msg in history:
+                input_messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"],
+                })
+            # Add current message
+            input_messages.append({"role": "user", "content": message})
+            input_data = input_messages
+        else:
+            input_data = message
+        
         response = await self._openai.responses.create(
-            input=message,
+            input=input_data,
             tool_choice="auto",
             extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
         )

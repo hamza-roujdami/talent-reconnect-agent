@@ -87,10 +87,34 @@ python data/02-push-data.py --count 10000
 python data/03-create-feedback-index.py
 python data/04-push-feedback-data.py
 
-# 4. Run the app
+# 4. (Optional) Setup Cosmos DB for session persistence
+# Create database and container via Azure CLI:
+az cosmosdb sql database create \
+  --account-name <your-cosmos-account> \
+  --resource-group <your-rg> \
+  --name talent-reconnect
+
+az cosmosdb sql container create \
+  --account-name <your-cosmos-account> \
+  --resource-group <your-rg> \
+  --database-name talent-reconnect \
+  --name sessions \
+  --partition-key-path "/session_id"
+
+# Grant yourself data-plane RBAC (Cosmos DB Data Contributor):
+az cosmosdb sql role assignment create \
+  --account-name <your-cosmos-account> \
+  --resource-group <your-rg> \
+  --role-definition-id "00000000-0000-0000-0000-000000000002" \
+  --principal-id $(az ad signed-in-user show --query id -o tsv) \
+  --scope "/"
+
+# 5. Run the app
 python main.py
 # Open http://localhost:8000
 ```
+
+> **Note:** If Cosmos DB is not configured, the app falls back to in-memory session storage (sessions lost on restart).
 
 ---
 

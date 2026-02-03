@@ -228,6 +228,7 @@ class AgentFactory:
         """Execute a FunctionTool and return result as JSON string."""
         from tools.search import search_candidates
         from tools.feedback import lookup_feedback
+        from tools.email import send_outreach_email
         
         try:
             args = json.loads(arguments) if arguments else {}
@@ -244,6 +245,13 @@ class AgentFactory:
             return lookup_feedback(
                 candidate_id=args.get("candidate_id"),
                 candidate_name=args.get("candidate_name"),
+            )
+        elif name == "send_outreach_email":
+            return send_outreach_email(
+                candidate_name=args.get("candidate_name", "Candidate"),
+                candidate_email=args.get("candidate_email"),
+                subject=args.get("subject"),
+                body=args.get("body"),
             )
         else:
             return json.dumps({"error": f"Unknown tool: {name}"})

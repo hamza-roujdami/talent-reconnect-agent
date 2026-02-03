@@ -1,6 +1,7 @@
 """FastAPI routes with SSE streaming for chat.
 
 Uses Cosmos DB for session persistence (falls back to in-memory if not configured).
+Includes content safety filtering for input validation.
 """
 
 import json
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 
 from agents import AgentFactory
 from sessions.cosmos_store import create_session_store
+from safety import check_input_safety
 
 
 router = APIRouter()
@@ -61,6 +63,15 @@ async def stream_chat(
     
     # Send session ID
     yield sse_event("session", {"session_id": session_id})
+    
+    # Content safety check before processing
+    safety_result = await check_input_safety(message)
+    if not safety_result.is_safe:
+        yield sse_event("error", {
+            "message": f"Message blocked: {safety_result.reason}",
+            "safety": True,
+        })
+        return
     
     # Get history before adding user message
     history = await store.get_history(session_id)

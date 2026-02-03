@@ -62,16 +62,12 @@ class CosmosSessionStore:
             credential=self._credential,
         )
         
-        # Create database if needed
-        self._database = await self._client.create_database_if_not_exists(
-            id=self.database_name,
-        )
+        # Get existing database and container (created via Azure CLI/Bicep)
+        self._database = self._client.get_database_client(self.database_name)
+        self._container = self._database.get_container_client(self.container_name)
         
-        # Create container with session_id partition key
-        self._container = await self._database.create_container_if_not_exists(
-            id=self.container_name,
-            partition_key=PartitionKey(path="/session_id"),
-        )
+        # Verify connection works by reading container properties
+        await self._container.read()
         
         print(f"✓ Cosmos DB: {self.database_name}/{self.container_name}")
     

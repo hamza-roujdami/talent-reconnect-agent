@@ -13,7 +13,7 @@ from azure.ai.projects.models import (
 )
 
 from . import orchestrator, profile, search, insights, outreach
-from .tools import SEARCH_CANDIDATES_TOOL, LOOKUP_FEEDBACK_TOOL
+from .tools import SEARCH_CANDIDATES_TOOL, LOOKUP_FEEDBACK_TOOL, SEND_EMAIL_TOOL
 
 
 # Index names (from env)
@@ -70,7 +70,7 @@ def get_agent_definitions(
         "profile": profile.get_config(),
         "search": search.get_config(resume_search_tool, use_builtin_search),
         "insights": insights.get_config(feedback_search_tool, use_builtin_search),
-        "outreach": outreach.get_config(),
+        "outreach": outreach.get_config(email_tool=SEND_EMAIL_TOOL),
     }
 
 

@@ -1,86 +1,55 @@
-"""Foundry V2 Agent Factory.
-
-Manages agent lifecycle and chat interactions with Azure AI Foundry.
-Uses built-in AzureAISearchAgentTool for search operations.
+"""Agent Factory - 6-agent recruiting system.
 
 Usage:
     async with AgentFactory() as factory:
-        response = await factory.chat("Find Python developers in Dubai")
-        print(response)
+        agent_key, response = await factory.orchestrate("Hi")
+        if response:
+            print(response)  # Orchestrator handled directly
+        else:
+            print(await factory.chat("Hi", agent_key))
 """
 
+import json
 import os
-from dataclasses import dataclass, field
-from typing import AsyncIterator
-from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from azure.identity.aio import DefaultAzureCredential
 from azure.ai.projects.aio import AIProjectClient
-from azure.ai.projects.models import PromptAgentDefinition
+from azure.ai.projects.models import (
+    PromptAgentDefinition,
+    AzureAISearchAgentTool,
+    AzureAISearchToolResource,
+    AISearchIndexResource,
+    AzureAISearchQueryType,
+    WebSearchPreviewTool,
+    ApproximateLocation,
+)
 from dotenv import load_dotenv
 
-from .definitions import get_agent_definitions, AGENT_KEYS
-from . import orchestrator
+from . import orchestrator, role_crafter, talent_scout, insight_pulse, connect_pilot, market_radar
+from tools import SEND_EMAIL_TOOL
 
 load_dotenv()
 
 
-# =============================================================================
-# Configuration
-# =============================================================================
-
-# Connection name (from Foundry project connections)
-SEARCH_CONNECTION_NAME = os.environ.get("AZURE_AI_SEARCH_CONNECTION_NAME", "")
-
-
-# =============================================================================
-# Data Classes
-# =============================================================================
-
 @dataclass
 class Agent:
-    """V2 agent reference."""
+    """Agent reference."""
     name: str
     version: int
-    key: str  # orchestrator, search, etc.
+    key: str
 
-
-@dataclass 
-class Session:
-    """Conversation session with history."""
-    history: list[dict] = field(default_factory=list)
-    current_agent: str = "orchestrator"
-    
-    def add_message(self, role: str, content: str, agent: str = None):
-        self.history.append({
-            "role": role,
-            "content": content,
-            "agent": agent or self.current_agent,
-        })
-
-
-# =============================================================================
-# Agent Factory
-# =============================================================================
 
 class AgentFactory:
-    """Factory for Foundry V2 agents with built-in tools."""
+    """Creates and manages 6 Foundry agents for recruiting."""
     
-    def __init__(
-        self, 
-        endpoint: str = None, 
-        model: str = None,
-        persist_agents: bool = True,
-    ):
-        self.endpoint = endpoint or os.environ.get("PROJECT_ENDPOINT")
-        self.model = model or os.environ.get("FOUNDRY_MODEL_PRIMARY", "gpt-4o-mini")
-        self.persist_agents = persist_agents
-        
+    def __init__(self):
+        self.endpoint = os.environ.get("PROJECT_ENDPOINT")
+        self.model = os.environ.get("FOUNDRY_MODEL_PRIMARY", "gpt-4o-mini")
         self._credential = None
         self._client = None
         self._openai = None
         self._agents: dict[str, Agent] = {}
-        self._search_connection_id: str = None
     
     async def __aenter__(self):
         await self.initialize()
@@ -90,52 +59,66 @@ class AgentFactory:
         await self.cleanup()
     
     async def initialize(self):
-        """Initialize client and create/load agents."""
+        """Initialize client and create agents."""
         self._credential = DefaultAzureCredential()
-        self._client = AIProjectClient(
-            endpoint=self.endpoint,
-            credential=self._credential,
-        )
+        self._client = AIProjectClient(endpoint=self.endpoint, credential=self._credential)
         self._openai = self._client.get_openai_client()
         
-        # Get Azure AI Search connection ID (required)
-        if not SEARCH_CONNECTION_NAME:
-            raise RuntimeError(
-                "AZURE_AI_SEARCH_CONNECTION_NAME required. "
-                "Create a connection in your Foundry project and set this variable."
+        # Get search connection
+        conn_name = os.environ.get("AZURE_AI_SEARCH_CONNECTION_NAME", "")
+        if not conn_name:
+            raise RuntimeError("AZURE_AI_SEARCH_CONNECTION_NAME required")
+        
+        connection = await self._client.connections.get(conn_name)
+        print(f"✓ Search connection: {conn_name}")
+        
+        # Build search tools
+        def make_search_tool(index: str):
+            return AzureAISearchAgentTool(
+                azure_ai_search=AzureAISearchToolResource(
+                    indexes=[AISearchIndexResource(
+                        project_connection_id=connection.id,
+                        index_name=index,
+                        query_type=AzureAISearchQueryType.SEMANTIC,
+                    )]
+                )
             )
         
-        try:
-            connection = await self._client.connections.get(SEARCH_CONNECTION_NAME)
-            self._search_connection_id = connection.id
-            print(f"✓ Search connection: {SEARCH_CONNECTION_NAME}")
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to get search connection '{SEARCH_CONNECTION_NAME}'. "
-                f"Error: {e}"
+        resume_tool = make_search_tool(os.environ.get("SEARCH_RESUME_INDEX", "resumes"))
+        feedback_tool = make_search_tool(os.environ.get("SEARCH_FEEDBACK_INDEX", "feedback"))
+        
+        # Agent definitions
+        definitions = {
+            "orchestrator": orchestrator.get_config(),
+            "role-crafter": role_crafter.get_config(),
+            "talent-scout": talent_scout.get_config(resume_tool),
+            "insight-pulse": insight_pulse.get_config(feedback_tool),
+            "connect-pilot": connect_pilot.get_config(SEND_EMAIL_TOOL),
+        }
+        
+        # Add MarketRadar with web search
+        if os.environ.get("ENABLE_WEB_SEARCH", "true").lower() == "true":
+            web_tool = WebSearchPreviewTool(
+                user_location=ApproximateLocation(country="AE", city="Dubai", region="Dubai")
             )
+            definitions["market-radar"] = market_radar.get_config(web_tool)
+            print("✓ Web Search enabled")
         
-        # Get agent definitions with built-in search tools
-        definitions = get_agent_definitions(
-            search_connection_id=self._search_connection_id,
-        )
-        
-        # Always create new versions to pick up instruction changes
-        # (Foundry persists agents, but we want fresh instructions each time)
+        # Create agents
         for key, config in definitions.items():
             agent = await self._client.agents.create_version(
                 agent_name=key,
                 definition=PromptAgentDefinition(
                     model=self.model,
                     instructions=config["instructions"],
-                    tools=config.get("tools", []),
+                    tools=config["tools"],
                 ),
             )
             self._agents[key] = Agent(name=agent.name, version=agent.version, key=key)
             print(f"✓ Created {key} (v{agent.version})")
     
     async def cleanup(self):
-        """Close connections (agents persist in Foundry)."""
+        """Close connections."""
         if self._openai:
             await self._openai.close()
         if self._client:
@@ -143,42 +126,18 @@ class AgentFactory:
         if self._credential:
             await self._credential.close()
     
-    async def delete_agents(self):
-        """Explicitly delete all agents (for cleanup)."""
-        for agent in self._agents.values():
-            try:
-                await self._client.agents.delete_version(
-                    agent_name=agent.name,
-                    agent_version=agent.version,
-                )
-                print(f"✗ Deleted {agent.key}")
-            except Exception as e:
-                print(f"  Error deleting {agent.key}: {e}")
-    
-    async def chat(self, message: str, agent_key: str = "orchestrator", history: list[dict] = None) -> str:
-        """Send a message to an agent and get response.
-        
-        Args:
-            message: Current user message
-            agent_key: Which agent to use
-            history: Optional conversation history [{"role": "user/assistant", "content": "..."}]
-        """
+    async def chat(self, message: str, agent_key: str, history: list[dict] = None) -> str:
+        """Send message to an agent."""
         agent = self._agents.get(agent_key)
         if not agent:
             raise ValueError(f"Unknown agent: {agent_key}")
         
-        # Build input with history if provided
+        # Build input with history
         if history:
-            # Format history for the model
-            input_messages = []
-            for msg in history:
-                input_messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"],
-                })
-            # Add current message
-            input_messages.append({"role": "user", "content": message})
-            input_data = input_messages
+            max_history = 6 if agent_key == "market-radar" else 20
+            recent = history[-max_history:] if len(history) > max_history else history
+            input_data = [{"role": m["role"], "content": m["content"]} for m in recent]
+            input_data.append({"role": "user", "content": message})
         else:
             input_data = message
         
@@ -187,89 +146,48 @@ class AgentFactory:
             tool_choice="auto",
             extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
         )
-        
-        # Foundry handles built-in search tools automatically
         return response.output_text or ""
     
-    async def chat_stream(self, message: str, agent_key: str = "orchestrator") -> AsyncIterator[str]:
-        """Stream a response from an agent."""
-        agent = self._agents.get(agent_key)
-        if not agent:
-            raise ValueError(f"Unknown agent: {agent_key}")
+    async def orchestrate(self, message: str, history: list[dict] = None) -> tuple[str, str | None]:
+        """Route message via Orchestrator.
         
-        stream = await self._openai.responses.create(
-            stream=True,
-            input=message,
-            tool_choice="auto",
-            extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
-        )
-        
-        async for event in stream:
-            if event.type == "response.output_text.delta":
-                yield event.delta
-    
-    def route(self, message: str) -> str:
-        """Route message to appropriate agent."""
-        return orchestrator.route(message)
-    
-    async def orchestrate(self, message: str, session: Session = None) -> tuple[str, str]:
-        """Route message to appropriate agent and get response.
-        
-        Returns:
-            Tuple of (response_text, agent_key)
+        Returns (agent_key, direct_response).
+        If direct_response is set, orchestrator handled it directly.
         """
-        agent_key = self.route(message)
+        orch = self._agents.get("orchestrator")
+        if not orch:
+            return "role-crafter", None
         
-        if session:
-            session.current_agent = agent_key
-            session.add_message("user", message)
+        # Add context about profile state
+        has_profile = any(
+            "Profile Ready" in (m.get("content", "") or "")
+            for m in (history or [])
+            if m.get("role") == "assistant"
+        )
+        context = f"\n\nContext: Profile {'exists' if has_profile else 'not yet built'}."
+        prompt = f"User message: {message}{context}\n\nOutput ONLY the JSON."
         
-        response = await self.chat(message, agent_key)
-        
-        if session:
-            session.add_message("assistant", response, agent_key)
-        
-        return response, agent_key
-    
-    @property
-    def agents(self) -> dict[str, Agent]:
-        """Get all agents."""
-        return self._agents
+        try:
+            response = await self._openai.responses.create(
+                input=prompt,
+                extra_body={"agent": {"name": orch.name, "type": "agent_reference"}},
+            )
+            
+            text = response.output_text or ""
+            if "{" in text and "}" in text:
+                data = json.loads(text[text.index("{"):text.rindex("}")+1])
+                agent_key = data.get("agent", "role-crafter")
+                
+                if agent_key == "orchestrator":
+                    return "orchestrator", data.get("response", "How can I help with recruiting?")
+                if agent_key in self._agents:
+                    return agent_key, None
+            
+            return "role-crafter", None
+            
+        except Exception as e:
+            print(f"⚠️  Orchestrator error: {e}")
+            return "role-crafter", None
 
 
-# =============================================================================
-# Convenience Functions
-# =============================================================================
-
-@asynccontextmanager
-async def create_factory(**kwargs):
-    """Async context manager for factory."""
-    factory = AgentFactory(**kwargs)
-    try:
-        await factory.initialize()
-        yield factory
-    finally:
-        await factory.cleanup()
-
-
-async def quick_chat(message: str, agent: str = "orchestrator") -> str:
-    """One-off chat without managing lifecycle."""
-    async with create_factory() as factory:
-        return await factory.chat(message, agent)
-
-
-# =============================================================================
-# Exports
-# =============================================================================
-
-__all__ = [
-    "AgentFactory",
-    "Agent",
-    "Session",
-    "create_factory",
-    "quick_chat",
-    "AGENT_KEYS",
-]
-
-# Backwards compatibility
-AGENTS = AGENT_KEYS
+__all__ = ["AgentFactory", "Agent"]

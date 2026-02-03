@@ -1,68 +1,61 @@
 # Talent Reconnect Agent
 
-AI-powered recruiting assistant using **Microsoft Foundry**.
+AI-powered recruiting assistant built on **Azure AI Foundry** with multi-agent orchestration.
 
 > ⚠️ **Demo purposes only** - Not intended for production use.
 
----
-
 ## Overview
 
-Multi-agent recruiting workflow that helps find candidates, review interview history, and draft outreach emails.
+6-agent recruiting system that routes conversations intelligently:
 
 ```
-User → Orchestrator → Specialist Agents → Azure AI Search
+User → Orchestrator → Specialist Agent → Tools (Search, Email, Web)
 ```
-
-## Tech Stack
-
-| Feature | Technology |
-|---------|------------|
-| **Multi-Agent Orchestration** | Foundry Agents (Responses API), `azure-ai-projects`, `azure-ai-agents` |
-| **Model Inference** | Azure OpenAI (`gpt-4o-mini`) via Foundry |
-| **Candidate Search** | `AzureAISearchAgentTool` (built-in, semantic ranking) |
-| **Feedback Lookup** | `AzureAISearchAgentTool` (built-in, semantic ranking) |
-| **Session Persistence** | Azure Cosmos DB (with in-memory fallback) |
-| **Observability** | `AIAgentsInstrumentor`, Azure Monitor, App Insights |
-| **Content Safety** | Foundry Guardrails (`Microsoft.DefaultV2` policy) |
-| **API Server** | FastAPI with SSE streaming |
-| **Infrastructure** | Bicep templates (public + private networking options) |
-
----
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Orchestrator (TalentHub)                   │
-│                  Routes requests to specialists                 │
+│                         Orchestrator                            │
+│     Routes requests • Handles greetings • Rejects off-topic     │
 └─────────────────────────────────────────────────────────────────┘
-         │              │              │              │
-         ▼              ▼              ▼              ▼
-┌─────────────┐ ┌─────────────┐ ┌──────────────┐ ┌─────────────┐
-│ RoleCrafter │ │ TalentScout │ │ InsightPulse │ │ ConnectPilot│
-│  (profile)  │ │  (search)   │ │  (insights)  │ │  (outreach) │
-└─────────────┘ └─────────────┘ └──────────────┘ └─────────────┘
-                      │              │
-                      ▼              ▼
-              ┌─────────────┐ ┌─────────────┐
-              │ Azure AI    │ │ Azure AI    │
-              │ Search      │ │ Search      │
-              │ (resumes)   │ │ (feedback)  │
-              └─────────────┘ └─────────────┘
+         │              │              │              │              │
+         ▼              ▼              ▼              ▼              ▼
+┌─────────────┐ ┌─────────────┐ ┌──────────────┐ ┌─────────────┐ ┌─────────────┐
+│ RoleCrafter │ │ TalentScout │ │ InsightPulse │ │ ConnectPilot│ │ MarketRadar │
+│  (profile)  │ │  (search)   │ │  (feedback)  │ │  (outreach) │ │  (research) │
+└─────────────┘ └─────────────┘ └──────────────┘ └─────────────┘ └─────────────┘
+                      │              │              │              │
+                      ▼              ▼              ▼              ▼
+              ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+              │ Azure AI    │ │ Azure AI    │ │  SendEmail  │ │ WebSearch   │
+              │ Search      │ │ Search      │ │  Function   │ │ Preview     │
+              │ (resumes)   │ │ (feedback)  │ │             │ │             │
+              └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘
 ```
 
 ### Agents
 
-| Agent | Key | Purpose |
-|-------|-----|---------|
-| **TalentHub** | `orchestrator` | Routes requests to specialists |
-| **RoleCrafter** | `profile` | Defines job requirements, generates candidate profile |
-| **TalentScout** | `search` | Finds candidates via Azure AI Search |
-| **InsightPulse** | `insights` | Reviews interview feedback |
-| **ConnectPilot** | `outreach` | Drafts personalized emails |
+| Agent | Key | Purpose | Tools |
+|-------|-----|---------|-------|
+| **Orchestrator** | `orchestrator` | Routes requests, handles greetings, rejects off-topic | None |
+| **RoleCrafter** | `role-crafter` | Builds job profiles and gathers requirements | None |
+| **TalentScout** | `talent-scout` | Searches 100k+ resumes | AzureAISearchAgentTool |
+| **InsightPulse** | `insight-pulse` | Reviews interview feedback history | AzureAISearchAgentTool |
+| **ConnectPilot** | `connect-pilot` | Drafts and sends outreach emails | FunctionTool |
+| **MarketRadar** | `market-radar` | Researches salaries, trends, companies | WebSearchPreviewTool |
 
----
+## Tech Stack
+
+| Feature | Technology |
+|---------|------------|
+| **Multi-Agent Orchestration** | Azure AI Foundry Agents (Responses API) |
+| **Model** | `gpt-5-mini` via Foundry |
+| **Candidate Search** | `AzureAISearchAgentTool` (semantic ranking) |
+| **Feedback Lookup** | `AzureAISearchAgentTool` (semantic ranking) |
+| **Web Research** | `WebSearchPreviewTool` (no Bing resource needed) |
+| **Session Persistence** | Azure Cosmos DB (with in-memory fallback) |
+| **API Server** | FastAPI with SSE streaming |
 
 ## Quick Start
 
@@ -72,271 +65,77 @@ User → Orchestrator → Specialist Agents → Azure AI Search
 - Azure subscription with:
   - Azure AI Foundry project
   - Azure AI Search (Standard tier for semantic search)
-  - Azure Cosmos DB (optional, for session persistence)
+  - Azure Cosmos DB (optional)
 
 ### Setup
 
 ```bash
-# 1. Clone and setup environment
+# 1. Clone and setup
 git clone https://github.com/your-org/talent-reconnect-agent.git
 cd talent-reconnect-agent
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Configure environment
+# 2. Configure
 cp .env.example .env
 # Edit .env with your Azure credentials
 
-# 3. Create search indexes and upload data
+# 3. Create search indexes
 python data/01-create-index.py
-python data/02-push-data.py --count 10000
+python data/02-push-data.py --count 100000
 python data/03-create-feedback-index.py
 python data/04-push-feedback-data.py
 
-# 4. (Optional) Setup Cosmos DB for session persistence
-# Create database and container via Azure CLI:
-az cosmosdb sql database create \
-  --account-name <your-cosmos-account> \
-  --resource-group <your-rg> \
-  --name talent-reconnect
-
-az cosmosdb sql container create \
-  --account-name <your-cosmos-account> \
-  --resource-group <your-rg> \
-  --database-name talent-reconnect \
-  --name sessions \
-  --partition-key-path "/session_id"
-
-# Grant yourself data-plane RBAC (Cosmos DB Data Contributor):
-az cosmosdb sql role assignment create \
-  --account-name <your-cosmos-account> \
-  --resource-group <your-rg> \
-  --role-definition-id "00000000-0000-0000-0000-000000000002" \
-  --principal-id $(az ad signed-in-user show --query id -o tsv) \
-  --scope "/"
-
-# 5. Run the app
+# 4. Run
 python main.py
 # Open http://localhost:8000
 ```
 
-> **Note:** If Cosmos DB is not configured, the app falls back to in-memory session storage (sessions lost on restart).
-
----
-
-## Infrastructure Deployment
-
-Two deployment options in `infra/`:
-
-| Mode | Folder | Description |
-|------|--------|-------------|
-| **🌐 Public** | `infra/public/` | All public endpoints - fast, simple, great for demos |
-| **🔒 Private** | `infra/private/` | VNet + Private Endpoints + WAF - enterprise-ready |
-
-### Public (Recommended for Demos)
+### Environment Variables
 
 ```bash
-cd infra/public
-./deploy.sh rg-talent-reconnect swedencentral
+# Required
+PROJECT_ENDPOINT=https://your-project.services.ai.azure.com/api/projects/your-project
+AZURE_AI_SEARCH_CONNECTION_NAME=your-search-connection
+FOUNDRY_MODEL_PRIMARY=gpt-5-mini
+
+# Optional
+SEARCH_RESUME_INDEX=resumes
+SEARCH_FEEDBACK_INDEX=feedback
+ENABLE_WEB_SEARCH=true
 ```
 
-Deploys: AI Foundry, AI Search, Cosmos DB, Container Apps, APIM, App Insights
-
-### Private (Enterprise)
-
-```bash
-cd infra/private
-az deployment group create -g rg-talent-reconnect -f main.bicep -p main.bicepparam
-az deployment group create -g rg-talent-reconnect -f network-security.bicep -p network-security.bicepparam
-az deployment group create -g rg-talent-reconnect -f app-hosting.bicep -p app-hosting.bicepparam
-```
-
-Adds: VNet, Private Endpoints, App Gateway + WAF, NSGs
-
-See [infra/README.md](infra/README.md) for full details.
-
----
-
-## Environment Variables
-
-Copy `.env.example` to `.env`:
-
-| Variable | Description |
-|----------|-------------|
-| `PROJECT_ENDPOINT` | Azure AI Foundry project endpoint |
-| `FOUNDRY_MODEL_PRIMARY` | Model deployment (e.g., `gpt-4o-mini`) |
-| `AZURE_SEARCH_ENDPOINT` | Azure AI Search endpoint |
-| `AZURE_SEARCH_API_KEY` | Azure AI Search admin key |
-| `SEARCH_RESUME_INDEX` | Resume index name (default: `resumes`) |
-| `SEARCH_FEEDBACK_INDEX` | Feedback index name (default: `feedback`) |
-| `COSMOS_ENDPOINT` | Cosmos DB endpoint (optional) |
-
----
-
-## Project Structure
+## Workflow Example
 
 ```
-talent-reconnect-agent/
-├── main.py                   # FastAPI server entry point
-├── config.py                 # Environment configuration
-├── requirements.txt          # Python dependencies
-│
-├── agents/                   # Agent definitions
-│   ├── factory.py            # AgentFactory class
-│   ├── definitions.py        # Agent assembly with tools
-│   ├── orchestrator.py       # TalentHub + routing
-│   ├── profile_agent.py      # RoleCrafter agent
-│   ├── search_agent.py       # TalentScout agent
-│   ├── insights_agent.py     # InsightPulse agent
-│   └── outreach_agent.py     # ConnectPilot agent
-│
-├── tools/                    # Tool implementations
-│   ├── search_provider.py    # Candidate search (Azure AI Search)
-│   └── feedback_lookup.py    # Feedback lookup
-│
-├── api/                      # API routes
-│   └── routes.py             # FastAPI routes with SSE streaming
-│
-├── sessions/                 # Session persistence
-│   └── cosmos_store.py       # Cosmos DB + in-memory fallback
-│
-├── observability/            # Tracing & evaluation
-│   ├── tracing.py            # Foundry native telemetry + Azure Monitor
-│   └── evals/                # Agent evaluation suite
-│
-├── guardrails/               # Content safety
-│   └── README.md             # Foundry Guardrails (Microsoft.DefaultV2)
-│
-├── static/
-│   └── index.html            # Demo UI
-│
-├── data/                     # Azure AI Search setup
-│   ├── 01-create-index.py    # Create resumes index
-│   ├── 02-push-data.py       # Upload synthetic resumes
-│   ├── 03-create-feedback-index.py
-│   ├── 04-push-feedback-data.py
-│   └── README.md
-│
-├── infra/                    # Azure infrastructure
-│   ├── public/               # Public endpoints (demo)
-│   ├── private/              # Private networking (enterprise)
-│   └── README.md
-│
-└── tests/                    # Test suite
-    ├── conftest.py
-    └── test_*.py
+1. User: "Hi"
+   → Orchestrator handles directly (greeting)
+
+2. User: "I need a Senior AI Engineer in Dubai"
+   → Orchestrator → RoleCrafter (builds profile)
+
+3. User: "Required: Python, LLMs, Azure. 5+ years."
+   → Orchestrator → RoleCrafter (captures requirements)
+
+4. User: "Search for candidates"
+   → Orchestrator → TalentScout (searches resumes)
+
+5. User: "Check feedback for candidate 1"
+   → Orchestrator → InsightPulse (retrieves interview history)
+
+6. User: "Send email to candidate 1"
+   → Orchestrator → ConnectPilot (drafts outreach)
+
+7. User: "What's the weather?"
+   → Orchestrator handles directly (rejects off-topic)
 ```
-
----
-
-## Data Setup
-
-Azure AI Search indexes for candidates and interview feedback:
-
-```bash
-# Create indexes (semantic search enabled)
-python data/01-create-index.py
-python data/03-create-feedback-index.py
-
-# Upload synthetic data
-python data/02-push-data.py --count 1000        # 1K resumes
-python data/04-push-feedback-data.py            # Feedback for each
-
-# Preview without uploading
-python data/02-push-data.py --count 100 --dry-run
-```
-
-See [data/README.md](data/README.md) for details.
-
----
-
-## Demo Workflow
-
-1. **Define Role**: "Senior AI Engineer in Dubai"
-   - RoleCrafter generates a candidate profile immediately
-
-2. **Search Candidates**: "yes" (confirms profile)
-   - TalentScout searches 100K+ resumes
-
-3. **Check History**: "Check feedback for candidate 1"
-   - InsightPulse retrieves interview history
-
-4. **Draft Outreach**: "Send email to candidate 1"
-   - ConnectPilot drafts personalized email
-
----
-
-## Observability
-
-Built-in tracing and monitoring:
-
-- **Foundry Native Tracing**: `enable_telemetry()` instruments all agent/tool calls
-- **Azure Monitor**: App Insights integration via `APPLICATIONINSIGHTS_CONNECTION_STRING`
-- **Evaluations**: Agent behavior tests in `observability/evals/`
-
-See [observability/README.md](observability/README.md) for setup details.
-
----
-
-## Content Safety
-
-Content safety handled by **Foundry Guardrails** at the model level:
-
-- Hate, violence, sexual, self-harm content filtering
-- Prompt attack and indirect attack detection
-- Protected material and PII handling
-
-Configured via Azure AI Foundry portal → Safety + Security.
-See [guardrails/README.md](guardrails/README.md) for details.
-
----
 
 ## Testing
 
 ```bash
-# Run all tests
-pytest tests/ -v
-
-# Specific test files
-pytest tests/test_agents.py -v
-pytest tests/test_api.py -v
+python tests/test_full_workflow.py
 ```
-
----
-
-## Infrastructure (Optional)
-
-Enterprise-grade Bicep templates in `infra/`:
-
-- **Public Mode** (`infra/public/`): AI Foundry, Cosmos DB, AI Search, Container Apps, APIM
-- **Private Mode** (`infra/private/`): + VNet, App Gateway + WAF, Private Endpoints
-
-See [infra/README.md](infra/README.md) for deployment instructions.
-
----
-
-## Usage Example
-
-```python
-import asyncio
-from agents import AgentFactory
-
-async def main():
-    async with AgentFactory() as factory:
-        # Direct agent call
-        response = await factory.chat("Find Python developers in Dubai", "search")
-        print(response)
-        
-        # Auto-routing
-        response, agent = await factory.orchestrate("What feedback do we have on Ahmed?")
-        print(f"Routed to: {agent}")
-        print(response)
-
-asyncio.run(main())
-```
-
----
 
 ## License
 
-MIT License - Demo purposes only.
+MIT

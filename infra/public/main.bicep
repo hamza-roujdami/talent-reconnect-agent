@@ -28,7 +28,7 @@
   'southcentralus'
 ])
 @description('The Azure region where resources will be created.')
-param location string = 'uaenorth'
+param location string = 'swedencentral'
 
 @maxLength(9)
 @description('Base name for AI Services resource.')
@@ -42,13 +42,13 @@ param projectDescription string = 'Talent Reconnect - AI Recruiting Assistant'
 
 // Model deployment parameters
 @description('The name of the model to deploy')
-param modelName string = 'gpt-4o-mini'
+param modelName string = 'gpt-5-mini'
 
 @description('The model provider')
 param modelFormat string = 'OpenAI'
 
 @description('The model version')
-param modelVersion string = '2024-07-18'
+param modelVersion string = '2025-08-07'
 
 @description('The SKU for model deployment')
 param modelSkuName string = 'GlobalStandard'

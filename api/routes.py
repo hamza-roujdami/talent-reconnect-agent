@@ -1,7 +1,7 @@
 """FastAPI routes with SSE streaming for chat.
 
 Uses Cosmos DB for session persistence (falls back to in-memory if not configured).
-Content safety handled by Foundry Guardrails at the model level.
+Simple 4-agent routing: search, feedback, outreach, research.
 """
 
 import json
@@ -21,10 +21,11 @@ router = APIRouter()
 # Agent display names
 AGENT_NAMES = {
     "orchestrator": "Orchestrator",
-    "profile": "Profile Agent",
-    "search": "Search Agent",
-    "insights": "Insights Agent",
-    "outreach": "Outreach Agent",
+    "role-crafter": "RoleCrafter",
+    "talent-scout": "TalentScout",
+    "insight-pulse": "InsightPulse",
+    "connect-pilot": "ConnectPilot",
+    "market-radar": "MarketRadar",
 }
 
 
@@ -72,32 +73,20 @@ async def stream_chat(
     # Add user message to history
     await store.add_message(session_id, "user", message)
     
-    # Route to agent - use context-aware routing
-    agent_key = factory.route(message)
-    
-    # Sticky routing: if user gives a short response and we were on profile,
-    # stay on profile (they're likely adding details or confirming)
-    if agent_key == "orchestrator" and history:
-        last_agent = None
-        for msg in reversed(history):
-            if msg.get("role") == "assistant" and msg.get("agent"):
-                last_agent = msg.get("agent")
-                break
-        # FIRST: Check if user says "yes" to confirm profile → trigger search
-        if last_agent == "profile" and message.lower().strip() in ["yes", "yes!", "looks good", "correct", "proceed", "go ahead", "search", "find them", "find candidates"]:
-            agent_key = "search"
-        # THEN: If short message and was on profile, stay with profile (adding details)
-        elif last_agent == "profile" and len(message.split()) < 15:
-            agent_key = "profile"
-    
+    # Ask Orchestrator which agent should handle this
+    agent_key, direct_response = await factory.orchestrate(message, history=history)
     agent_name = AGENT_NAMES.get(agent_key, agent_key)
     
     # Send agent activity
     yield sse_event("agent", {"name": agent_name, "key": agent_key})
     
     try:
-        # Get response with conversation history
-        response = await factory.chat(message, agent_key, history=history or None)
+        # If orchestrator handles directly (greetings, out-of-scope)
+        if direct_response:
+            response = direct_response
+        else:
+            # Get response from the routed agent
+            response = await factory.chat(message, agent_key, history=history or None)
         
         # Stream the response
         yield sse_event("text", {"content": response})

@@ -9,7 +9,6 @@ azure-identity>=1.19.0
 # Azure Services
 azure-search-documents>=11.6.0
 azure-cosmos>=4.9.0
-azure-ai-contentsafety>=1.0.0
 aiohttp>=3.9.0
 
 # Evaluations

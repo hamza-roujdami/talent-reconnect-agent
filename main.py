@@ -29,10 +29,10 @@ async def lifespan(app: FastAPI):
             print(f"   - {var}")
         print("\nSome features may not work. Copy .env.example to .env and configure.")
     
-    # Setup observability (App Insights + OpenTelemetry)
-    if setup_telemetry():
+    # Setup observability (App Insights + Foundry tracing)
+    if await setup_telemetry():
         print("✓ Telemetry enabled (Azure Monitor)")
-        enable_foundry_tracing()
+    enable_foundry_tracing()
     
     # Initialize factory on startup
     print("🚀 Starting Talent Reconnect Agent...")

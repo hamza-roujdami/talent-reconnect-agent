@@ -21,6 +21,8 @@ User → Orchestrator → Specialist Agents → Azure AI Search
 - ✉️ Personalized outreach emails
 - 🌐 FastAPI server with SSE streaming
 - 💾 Cosmos DB session persistence (with in-memory fallback)
+- 📊 Observability via Foundry native tracing + Azure Monitor
+- 🛡️ Content safety via Foundry Guardrails (Microsoft.DefaultV2)
 
 ---
 
@@ -194,6 +196,13 @@ talent-reconnect-agent/
 ├── sessions/                 # Session persistence
 │   └── cosmos_store.py       # Cosmos DB + in-memory fallback
 │
+├── observability/            # Tracing & evaluation
+│   ├── tracing.py            # Foundry native telemetry + Azure Monitor
+│   └── evals/                # Agent evaluation suite
+│
+├── guardrails/               # Content safety
+│   └── README.md             # Foundry Guardrails (Microsoft.DefaultV2)
+│
 ├── static/
 │   └── index.html            # Demo UI
 │
@@ -208,10 +217,6 @@ talent-reconnect-agent/
 │   ├── public/               # Public endpoints (demo)
 │   ├── private/              # Private networking (enterprise)
 │   └── README.md
-│
-├── evals/                    # Evaluation suite
-│   ├── golden_dataset.json   # Test cases
-│   └── test_*.py             # Evaluation tests
 │
 └── tests/                    # Test suite
     ├── conftest.py
@@ -254,6 +259,31 @@ See [data/README.md](data/README.md) for details.
 
 4. **Draft Outreach**: "Send email to candidate 1"
    - ConnectPilot drafts personalized email
+
+---
+
+## Observability
+
+Built-in tracing and monitoring:
+
+- **Foundry Native Tracing**: `enable_telemetry()` instruments all agent/tool calls
+- **Azure Monitor**: App Insights integration via `APPLICATIONINSIGHTS_CONNECTION_STRING`
+- **Evaluations**: Agent behavior tests in `observability/evals/`
+
+See [observability/README.md](observability/README.md) for setup details.
+
+---
+
+## Content Safety
+
+Content safety handled by **Foundry Guardrails** at the model level:
+
+- Hate, violence, sexual, self-harm content filtering
+- Prompt attack and indirect attack detection
+- Protected material and PII handling
+
+Configured via Azure AI Foundry portal → Safety + Security.
+See [guardrails/README.md](guardrails/README.md) for details.
 
 ---
 

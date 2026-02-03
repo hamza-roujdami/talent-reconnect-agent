@@ -67,40 +67,53 @@ async def setup_telemetry(project_client=None) -> bool:
         return False
 
 
-def enable_foundry_tracing(destination=None):
+def enable_foundry_tracing():
     """Enable Foundry SDK telemetry for agent/tool tracing.
     
     This instruments azure-ai-agents, azure-ai-inference, and
     other GenAI libraries for detailed tracing.
     
-    Args:
-        destination: Optional. Set to sys.stdout for console output,
-                    or OTLP endpoint string for local dev.
+    Uses AIAgentsInstrumentor from azure.ai.agents.telemetry.
     """
-    # Enable content recording for debugging (disable in prod)
+    # Enable content recording for debugging (set to "true" in dev, "false" in prod)
     if os.environ.get("AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED") is None:
         os.environ["AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED"] = "false"
     
+    # Configure Azure SDK to use OpenTelemetry
     try:
-        from azure.ai.projects import enable_telemetry
-        
-        # Enable Foundry SDK telemetry
-        enable_telemetry(destination=destination)
-        logger.info("✓ Foundry agent tracing enabled")
-        return True
-        
+        from azure.core.settings import settings
+        settings.tracing_implementation = "opentelemetry"
+    except Exception:
+        pass  # Not critical
+    
+    instrumented = False
+    
+    # 1. Try AIAgentsInstrumentor (azure-ai-agents SDK)
+    try:
+        from azure.ai.agents.telemetry import AIAgentsInstrumentor
+        AIAgentsInstrumentor().instrument()
+        logger.info("✓ AIAgentsInstrumentor enabled")
+        instrumented = True
     except ImportError:
-        # Try the agents package directly
-        try:
-            from azure.ai.agents.telemetry import enable_telemetry
-            enable_telemetry(destination=destination)
-            logger.info("✓ Foundry agent tracing enabled (via agents SDK)")
-            return True
-        except ImportError:
-            logger.debug("Foundry telemetry not available")
-            return False
+        logger.debug("AIAgentsInstrumentor not available")
     except Exception as e:
-        logger.warning(f"Failed to enable Foundry tracing: {e}")
+        logger.debug(f"AIAgentsInstrumentor failed: {e}")
+    
+    # 2. Try AIInferenceInstrumentor (azure-ai-inference SDK)
+    try:
+        from azure.ai.inference.tracing import AIInferenceInstrumentor
+        AIInferenceInstrumentor().instrument()
+        logger.info("✓ AIInferenceInstrumentor enabled")
+        instrumented = True
+    except ImportError:
+        logger.debug("AIInferenceInstrumentor not available")
+    except Exception as e:
+        logger.debug(f"AIInferenceInstrumentor failed: {e}")
+    
+    if instrumented:
+        return True
+    else:
+        logger.warning("No Foundry instrumentors available - agent calls won't be traced")
         return False
 
 

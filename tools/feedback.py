@@ -60,9 +60,11 @@ def lookup_feedback(
                 select=select_fields,
             )
         elif candidate_name:
-            # Search by name
+            # Semantic search by name
             results = client.search(
                 search_text=candidate_name,
+                query_type="semantic",
+                semantic_configuration_name="default",
                 top=top,
                 select=select_fields,
             )

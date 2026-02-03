@@ -61,6 +61,8 @@ def search_candidates(
     try:
         results = client.search(
             search_text=search_text,
+            query_type="semantic",
+            semantic_configuration_name="default",
             filter=filter_expr,
             top=top,
             select=["id", "name", "current_title", "current_company", "location", "skills", "experience_years", "summary"],

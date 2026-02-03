@@ -1,6 +1,6 @@
 # Talent Reconnect Agent
 
-AI-powered recruiting assistant using **Azure AI Foundry** and the **Responses API**.
+AI-powered recruiting assistant using **Microsoft Foundry**.
 
 > ⚠️ **Demo purposes only** - Not intended for production use.
 
@@ -14,15 +14,19 @@ Multi-agent recruiting workflow that helps find candidates, review interview his
 User → Orchestrator → Specialist Agents → Azure AI Search
 ```
 
-**Features:**
-- 🎯 Multi-agent orchestration with handoff routing
-- 🔍 Semantic search across 100K+ resumes
-- 📋 Interview feedback history
-- ✉️ Personalized outreach emails
-- 🌐 FastAPI server with SSE streaming
-- 💾 Cosmos DB session persistence (with in-memory fallback)
-- 📊 Observability via Foundry native tracing + Azure Monitor
-- 🛡️ Content safety via Foundry Guardrails (Microsoft.DefaultV2)
+## Tech Stack
+
+| Feature | Technology |
+|---------|------------|
+| **Multi-Agent Orchestration** | Foundry Agents (Responses API), `azure-ai-projects`, `azure-ai-agents` |
+| **Model Inference** | Azure OpenAI (`gpt-4o-mini`) via Foundry |
+| **Candidate Search** | Azure AI Search (semantic ranking, 100K+ resumes) |
+| **Feedback Lookup** | Azure AI Search (semantic ranking, interview feedback) |
+| **Session Persistence** | Azure Cosmos DB (with in-memory fallback) |
+| **Observability** | `AIAgentsInstrumentor`, Azure Monitor, App Insights |
+| **Content Safety** | Foundry Guardrails (`Microsoft.DefaultV2` policy) |
+| **API Server** | FastAPI with SSE streaming |
+| **Infrastructure** | Bicep templates (public + private networking options) |
 
 ---
 

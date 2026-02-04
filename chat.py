@@ -27,6 +27,8 @@ async def main():
     print("AI-powered recruiting assistant")
     print("Type 'quit' or 'exit' to stop\n")
     
+    history = []
+    
     async with AgentFactory() as factory:
         print("\n✓ Ready! Describe the role you're hiring for.\n")
         
@@ -44,10 +46,25 @@ async def main():
                 print("Goodbye!")
                 break
             
+            # Add user message to history
+            history.append({"role": "user", "content": user_input})
+            
             try:
-                # Route and get response
-                response, agent_key = await factory.orchestrate(user_input)
+                # Route via orchestrator
+                agent_key, direct_response = await factory.orchestrate(user_input, history=history)
+                
+                if direct_response:
+                    # Orchestrator handled directly (greeting, out-of-scope)
+                    response = direct_response
+                else:
+                    # Get response from the routed agent
+                    response = await factory.chat(user_input, agent_key, history=history)
+                
+                # Add assistant response to history
+                history.append({"role": "assistant", "content": response})
+                
                 print(f"\n[{agent_key}] {response}\n")
+                
             except Exception as e:
                 print(f"\n❌ Error: {e}\n")
 

@@ -135,54 +135,21 @@ class AgentFactory:
             await self._credential.close()
     
     async def _get_agent_for_user(self, agent_key: str, user_id: str) -> Agent:
-        """Get or create an agent with memory for a specific user.
+        """Get agent for a user.
         
-        For agents that benefit from memory (role-crafter), creates a
-        user-specific version with MemorySearchTool attached.
+        Currently returns the base agent. Memory integration can be added
+        via API calls in the future without creating per-user agents.
         
         Args:
             agent_key: The agent identifier
-            user_id: User/session identifier for memory scope
+            user_id: User/session identifier (for future memory scoping)
             
         Returns:
-            Agent reference (with memory if applicable)
+            Agent reference
         """
-        # Agents that should have memory attached
-        MEMORY_AGENTS = {"role-crafter"}  # Profile agent benefits most from memory
-        
-        # If memory disabled or not a memory agent, use base agent
-        if not self.memory_enabled or agent_key not in MEMORY_AGENTS:
-            return self._agents[agent_key]
-        
-        # Check if we already have a user-specific agent
-        if user_id in self._user_agents and agent_key in self._user_agents[user_id]:
-            return self._user_agents[user_id][agent_key]
-        
-        # Create user-specific agent with memory tool
-        memory_tool = self._memory.get_memory_tool(user_id, update_delay=60)
-        config = self._agent_configs[agent_key]
-        
-        # Add memory tool to existing tools
-        tools = list(config.get("tools", [])) + [memory_tool]
-        
-        agent = await self._client.agents.create_version(
-            agent_name=f"{agent_key}-{user_id[:8]}",  # Unique name per user
-            definition=PromptAgentDefinition(
-                model=self.model,
-                instructions=config["instructions"],
-                tools=tools,
-            ),
-        )
-        
-        # Cache it
-        if user_id not in self._user_agents:
-            self._user_agents[user_id] = {}
-        self._user_agents[user_id][agent_key] = Agent(
-            name=agent.name, version=agent.version, key=agent_key
-        )
-        
-        print(f"✓ Created {agent_key} with memory for user {user_id[:8]}...")
-        return self._user_agents[user_id][agent_key]
+        # For now, just return the base agent to avoid agent clutter
+        # Memory can be queried via API and injected into prompts if needed
+        return self._agents[agent_key]
     
     def _build_input(self, message: str, agent_key: str, history: list[dict] = None):
         """Build input with history for an agent call."""
@@ -260,13 +227,47 @@ class AgentFactory:
         if not orch:
             return "role-crafter", None
         
-        # Add context about profile state
+        # Build context about conversation state
+        context_parts = []
+        
         has_profile = any(
-            "Profile Ready" in (m.get("content", "") or "")
+            "Profile Ready" in (m.get("content", "") or "") or
+            "Role:" in (m.get("content", "") or "") or
+            "Title:" in (m.get("content", "") or "")
             for m in (history or [])
             if m.get("role") == "assistant"
         )
-        context = f"\n\nContext: Profile {'exists' if has_profile else 'not yet built'}."
+        
+        has_candidates = any(
+            "candidate" in (m.get("content", "") or "").lower() and
+            ("match" in (m.get("content", "") or "").lower() or 
+             "found" in (m.get("content", "") or "").lower() or
+             "result" in (m.get("content", "") or "").lower())
+            for m in (history or [])
+            if m.get("role") == "assistant"
+        )
+        
+        context_parts.append(f"Profile: {'exists' if has_profile else 'in progress - gathering requirements'}")
+        context_parts.append(f"Candidates: {'found in previous search' if has_candidates else 'not yet searched'}")
+        
+        # Check if the last assistant message was asking for more info (profile building in progress)
+        last_assistant = None
+        for m in reversed(history or []):
+            if m.get("role") == "assistant":
+                last_assistant = m.get("content", "")
+                break
+        
+        profile_in_progress = last_assistant and any(phrase in last_assistant.lower() for phrase in [
+            "years of experience", "how many years", "experience level",
+            "must-have", "nice-to-have", "required skills", "preferred skills",
+            "more details", "more information", "let me know", "could you",
+            "please provide", "please specify"
+        ])
+        
+        if profile_in_progress:
+            context_parts.append("Last agent was gathering profile details - continue with role-crafter")
+        
+        context = "\n\nContext: " + ". ".join(context_parts) + "."
         prompt = f"User message: {message}{context}\n\nOutput ONLY the JSON."
         
         try:

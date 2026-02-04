@@ -50,10 +50,11 @@ User → Orchestrator → Specialist Agent → Tools (Search, Email, Web)
 | Feature | Technology |
 |---------|------------|
 | **Multi-Agent Orchestration** | Azure AI Foundry Agents (Responses API) |
-| **Model** | `gpt-5-mini` via Foundry |
+| **Model** | `gpt-4o-mini` via Foundry |
 | **Candidate Search** | `AzureAISearchAgentTool` (semantic ranking) |
 | **Feedback Lookup** | `AzureAISearchAgentTool` (semantic ranking) |
 | **Web Research** | `WebSearchPreviewTool` (no Bing resource needed) |
+| **Long-term Memory** | Azure AI Foundry Memory Store (cross-session) |
 | **Session Persistence** | Azure Cosmos DB (with in-memory fallback) |
 | **API Server** | FastAPI with SSE streaming |
 
@@ -97,7 +98,7 @@ python main.py
 # Required
 PROJECT_ENDPOINT=https://your-project.services.ai.azure.com/api/projects/your-project
 AZURE_AI_SEARCH_CONNECTION_NAME=your-search-connection
-FOUNDRY_MODEL_PRIMARY=gpt-5-mini
+FOUNDRY_MODEL_PRIMARY=gpt-4o-mini
 
 # Optional
 SEARCH_RESUME_INDEX=resumes
@@ -135,7 +136,3 @@ ENABLE_WEB_SEARCH=true
 ```bash
 python tests/test_full_workflow.py
 ```
-
-## License
-
-MIT

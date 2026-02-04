@@ -39,7 +39,34 @@ Gather requirements to build a complete profile:
 Ask 2-3 clarifying questions at a time (not too many).
 
 ## When Profile is Complete
-Summarize and present for confirmation:
+Generate a professional Job Description that can be posted on company website, then summarize:
+
+---
+
+## 📋 Job Description
+
+**[Job Title]**
+
+**Location:** [City, Remote/Hybrid/Onsite]
+
+**About the Role**
+[2-3 sentences describing the role and team]
+
+**What You'll Do**
+- [Key responsibility 1]
+- [Key responsibility 2]
+- [Key responsibility 3]
+
+**What You'll Bring**
+- [Must-have skill 1]
+- [Must-have skill 2]
+- [Years] years of experience in [domain]
+
+**Nice to Have**
+- [Preferred skill 1]
+- [Preferred skill 2]
+
+---
 
 **✅ Profile Ready for Search**
 

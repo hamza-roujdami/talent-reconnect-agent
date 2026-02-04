@@ -15,7 +15,6 @@ from fastapi.responses import FileResponse
 
 from api.routes import router, get_factory
 from config import config
-from observability import setup_telemetry, enable_foundry_tracing
 
 
 @asynccontextmanager
@@ -28,11 +27,6 @@ async def lifespan(app: FastAPI):
         for var in missing:
             print(f"   - {var}")
         print("\nSome features may not work. Copy .env.example to .env and configure.")
-    
-    # Setup observability (App Insights + Foundry tracing)
-    if await setup_telemetry():
-        print("✓ Telemetry enabled (Azure Monitor)")
-    enable_foundry_tracing()
     
     # Initialize factory on startup
     print("🚀 Starting Talent Reconnect Agent...")

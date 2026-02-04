@@ -126,20 +126,23 @@ class AgentFactory:
         if self._credential:
             await self._credential.close()
     
-    async def chat(self, message: str, agent_key: str, history: list[dict] = None) -> str:
-        """Send message to an agent."""
-        agent = self._agents.get(agent_key)
-        if not agent:
-            raise ValueError(f"Unknown agent: {agent_key}")
-        
-        # Build input with history
+    def _build_input(self, message: str, agent_key: str, history: list[dict] = None):
+        """Build input with history for an agent call."""
         if history:
             max_history = 6 if agent_key == "market-radar" else 20
             recent = history[-max_history:] if len(history) > max_history else history
             input_data = [{"role": m["role"], "content": m["content"]} for m in recent]
             input_data.append({"role": "user", "content": message})
-        else:
-            input_data = message
+            return input_data
+        return message
+    
+    async def chat(self, message: str, agent_key: str, history: list[dict] = None) -> str:
+        """Send message to an agent (non-streaming)."""
+        agent = self._agents.get(agent_key)
+        if not agent:
+            raise ValueError(f"Unknown agent: {agent_key}")
+        
+        input_data = self._build_input(message, agent_key, history)
         
         response = await self._openai.responses.create(
             input=input_data,
@@ -147,6 +150,27 @@ class AgentFactory:
             extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
         )
         return response.output_text or ""
+    
+    async def chat_stream(self, message: str, agent_key: str, history: list[dict] = None):
+        """Stream response from an agent. Yields text chunks."""
+        agent = self._agents.get(agent_key)
+        if not agent:
+            raise ValueError(f"Unknown agent: {agent_key}")
+        
+        input_data = self._build_input(message, agent_key, history)
+        
+        async with await self._openai.responses.create(
+            input=input_data,
+            tool_choice="auto",
+            stream=True,
+            extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+        ) as stream:
+            async for event in stream:
+                if hasattr(event, "type"):
+                    if event.type == "response.output_text.delta":
+                        yield event.delta
+                    elif event.type == "response.output_text.done":
+                        break
     
     async def orchestrate(self, message: str, history: list[dict] = None) -> tuple[str, str | None]:
         """Route message via Orchestrator.

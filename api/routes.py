@@ -83,16 +83,19 @@ async def stream_chat(
     try:
         # If orchestrator handles directly (greetings, out-of-scope)
         if direct_response:
-            response = direct_response
+            yield sse_event("text", {"content": direct_response})
+            await store.add_message(session_id, "assistant", direct_response, agent=agent_key)
         else:
-            # Get response from the routed agent
-            response = await factory.chat(message, agent_key, history=history or None)
-        
-        # Stream the response
-        yield sse_event("text", {"content": response})
-        
-        # Save assistant response to history
-        await store.add_message(session_id, "assistant", response, agent=agent_key)
+            # Stream response from the routed agent
+            full_response = ""
+            async for chunk in factory.chat_stream(message, agent_key, history=history or None):
+                if chunk:
+                    yield sse_event("text", {"content": chunk})
+                    full_response += chunk
+            
+            # Save complete response to history
+            if full_response:
+                await store.add_message(session_id, "assistant", full_response, agent=agent_key)
         
     except Exception as e:
         yield sse_event("error", {"message": str(e)})

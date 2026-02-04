@@ -1,4 +1,4 @@
-"""Agent Factory - 6-agent recruiting system.
+"""Agent Factory - 6-agent recruiting system with long-term memory.
 
 Usage:
     async with AgentFactory() as factory:
@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 
 from . import orchestrator, role_crafter, talent_scout, insight_pulse, connect_pilot, market_radar
 from tools import SEND_EMAIL_TOOL
+from memory import MemoryManager
 
 load_dotenv()
 
@@ -41,7 +42,7 @@ class Agent:
 
 
 class AgentFactory:
-    """Creates and manages 6 Foundry agents for recruiting."""
+    """Creates and manages 6 Foundry agents for recruiting with long-term memory."""
     
     def __init__(self):
         self.endpoint = os.environ.get("PROJECT_ENDPOINT")
@@ -50,6 +51,8 @@ class AgentFactory:
         self._client = None
         self._openai = None
         self._agents: dict[str, Agent] = {}
+        self._memory: MemoryManager | None = None
+        self._current_user_id: str | None = None
     
     async def __aenter__(self):
         await self.initialize()
@@ -59,10 +62,14 @@ class AgentFactory:
         await self.cleanup()
     
     async def initialize(self):
-        """Initialize client and create agents."""
+        """Initialize client, memory, and create agents."""
         self._credential = DefaultAzureCredential()
         self._client = AIProjectClient(endpoint=self.endpoint, credential=self._credential)
         self._openai = self._client.get_openai_client()
+        
+        # Initialize memory store
+        self._memory = MemoryManager(self._client)
+        await self._memory.initialize()
         
         # Get search connection
         conn_name = os.environ.get("AZURE_AI_SEARCH_CONNECTION_NAME", "")
@@ -212,6 +219,57 @@ class AgentFactory:
         except Exception as e:
             print(f"⚠️  Orchestrator error: {e}")
             return "role-crafter", None
+    
+    # =========================================================================
+    # Memory Methods
+    # =========================================================================
+    
+    @property
+    def memory_enabled(self) -> bool:
+        """Check if long-term memory is enabled."""
+        return self._memory is not None and self._memory.enabled
+    
+    async def get_user_memories(self, user_id: str, query: str | None = None) -> list[dict]:
+        """Get memories for a user.
+        
+        Args:
+            user_id: User identifier
+            query: Optional search query (None for profile memories)
+            
+        Returns:
+            List of memory items
+        """
+        if not self._memory:
+            return []
+        return await self._memory.search_memories(user_id, query)
+    
+    async def delete_user_memories(self, user_id: str) -> bool:
+        """Delete all memories for a user (GDPR compliance).
+        
+        Args:
+            user_id: User identifier
+            
+        Returns:
+            True if deleted
+        """
+        if not self._memory:
+            return False
+        return await self._memory.delete_user_memories(user_id)
+    
+    def get_memory_tool(self, user_id: str):
+        """Get memory search tool for a user.
+        
+        This can be attached to agents to enable automatic memory read/write.
+        
+        Args:
+            user_id: User identifier (scope)
+            
+        Returns:
+            MemorySearchTool or None if memory disabled
+        """
+        if not self._memory:
+            return None
+        return self._memory.get_memory_tool(user_id)
 
 
 __all__ = ["AgentFactory", "Agent"]

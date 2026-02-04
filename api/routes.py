@@ -195,6 +195,49 @@ async def delete_session(session_id: str):
     return {"status": "not_found"}
 
 
+# =============================================================================
+# Memory Routes
+# =============================================================================
+
+@router.get("/memory/status")
+async def memory_status():
+    """Check if long-term memory is enabled."""
+    factory = await get_factory()
+    return {
+        "enabled": factory.memory_enabled,
+        "description": "Cross-session memory for user preferences and conversation history"
+    }
+
+
+@router.get("/memory/{user_id}")
+async def get_user_memories(user_id: str, query: str | None = None):
+    """Get memories for a user.
+    
+    Args:
+        user_id: User identifier
+        query: Optional search query (omit for profile memories)
+    """
+    factory = await get_factory()
+    
+    if not factory.memory_enabled:
+        return {"error": "Memory not enabled", "memories": []}
+    
+    memories = await factory.get_user_memories(user_id, query)
+    return {"user_id": user_id, "memories": memories}
+
+
+@router.delete("/memory/{user_id}")
+async def delete_user_memories(user_id: str):
+    """Delete all memories for a user (GDPR compliance)."""
+    factory = await get_factory()
+    
+    if not factory.memory_enabled:
+        return {"error": "Memory not enabled", "deleted": False}
+    
+    deleted = await factory.delete_user_memories(user_id)
+    return {"user_id": user_id, "deleted": deleted}
+
+
 @router.on_event("shutdown")
 async def shutdown():
     """Cleanup on shutdown."""

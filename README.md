@@ -1,6 +1,6 @@
 # Talent Reconnect Agent
 
-AI-powered recruiting assistant built on **Azure AI Foundry** with multi-agent orchestration.
+AI-powered recruiting assistant built on **Microsoft AI Foundry** with multi-agent orchestration.
 
 > ⚠️ **Demo purposes only** - Not intended for production use.
 
@@ -47,9 +47,14 @@ User → Orchestrator → Specialist Agent → Tools (Search, Email, Web)
 
 ## Tech Stack
 
+> **Note**: This project uses the new **Azure AI Foundry SDK v2** (`azure-ai-projects>=2.0.0b3`, `azure-ai-agents>=1.0.0b1`) with the Responses API pattern.
+> 
+> 📚 [Get started with Azure AI Foundry SDK](https://learn.microsoft.com/en-us/azure/ai-foundry/quickstarts/get-started-code?view=foundry&tabs=python)
+
 | Feature | Technology |
 |---------|------------|
-| **Multi-Agent Orchestration** | Azure AI Foundry Agents (Responses API) |
+| **SDK** | Azure AI Foundry v2 (`azure-ai-projects`, `azure-ai-agents`) |
+| **Multi-Agent Orchestration** | Foundry Agents with Responses API |
 | **Model** | `gpt-4o-mini` via Foundry |
 | **Candidate Search** | `AzureAISearchAgentTool` (semantic ranking) |
 | **Feedback Lookup** | `AzureAISearchAgentTool` (semantic ranking) |

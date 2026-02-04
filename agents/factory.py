@@ -52,7 +52,8 @@ class AgentFactory:
         self._openai = None
         self._agents: dict[str, Agent] = {}
         self._memory: MemoryManager | None = None
-        self._current_user_id: str | None = None
+        self._user_agents: dict[str, dict[str, Agent]] = {}  # user_id -> {agent_key -> Agent}
+        self._agent_configs: dict[str, dict] = {}  # Store agent configs for per-user creation
     
     async def __aenter__(self):
         await self.initialize()
@@ -94,8 +95,8 @@ class AgentFactory:
         resume_tool = make_search_tool(os.environ.get("SEARCH_RESUME_INDEX", "resumes"))
         feedback_tool = make_search_tool(os.environ.get("SEARCH_FEEDBACK_INDEX", "feedback"))
         
-        # Agent definitions
-        definitions = {
+        # Agent definitions (store for per-user agent creation)
+        self._agent_configs = {
             "orchestrator": orchestrator.get_config(),
             "role-crafter": role_crafter.get_config(),
             "talent-scout": talent_scout.get_config(resume_tool),
@@ -108,11 +109,11 @@ class AgentFactory:
             web_tool = WebSearchPreviewTool(
                 user_location=ApproximateLocation(country="AE", city="Dubai", region="Dubai")
             )
-            definitions["market-radar"] = market_radar.get_config(web_tool)
+            self._agent_configs["market-radar"] = market_radar.get_config(web_tool)
             print("✓ Web Search enabled")
         
-        # Create agents
-        for key, config in definitions.items():
+        # Create base agents (without per-user memory)
+        for key, config in self._agent_configs.items():
             agent = await self._client.agents.create_version(
                 agent_name=key,
                 definition=PromptAgentDefinition(
@@ -133,6 +134,56 @@ class AgentFactory:
         if self._credential:
             await self._credential.close()
     
+    async def _get_agent_for_user(self, agent_key: str, user_id: str) -> Agent:
+        """Get or create an agent with memory for a specific user.
+        
+        For agents that benefit from memory (role-crafter), creates a
+        user-specific version with MemorySearchTool attached.
+        
+        Args:
+            agent_key: The agent identifier
+            user_id: User/session identifier for memory scope
+            
+        Returns:
+            Agent reference (with memory if applicable)
+        """
+        # Agents that should have memory attached
+        MEMORY_AGENTS = {"role-crafter"}  # Profile agent benefits most from memory
+        
+        # If memory disabled or not a memory agent, use base agent
+        if not self.memory_enabled or agent_key not in MEMORY_AGENTS:
+            return self._agents[agent_key]
+        
+        # Check if we already have a user-specific agent
+        if user_id in self._user_agents and agent_key in self._user_agents[user_id]:
+            return self._user_agents[user_id][agent_key]
+        
+        # Create user-specific agent with memory tool
+        memory_tool = self._memory.get_memory_tool(user_id, update_delay=60)
+        config = self._agent_configs[agent_key]
+        
+        # Add memory tool to existing tools
+        tools = list(config.get("tools", [])) + [memory_tool]
+        
+        agent = await self._client.agents.create_version(
+            agent_name=f"{agent_key}-{user_id[:8]}",  # Unique name per user
+            definition=PromptAgentDefinition(
+                model=self.model,
+                instructions=config["instructions"],
+                tools=tools,
+            ),
+        )
+        
+        # Cache it
+        if user_id not in self._user_agents:
+            self._user_agents[user_id] = {}
+        self._user_agents[user_id][agent_key] = Agent(
+            name=agent.name, version=agent.version, key=agent_key
+        )
+        
+        print(f"✓ Created {agent_key} with memory for user {user_id[:8]}...")
+        return self._user_agents[user_id][agent_key]
+    
     def _build_input(self, message: str, agent_key: str, history: list[dict] = None):
         """Build input with history for an agent call."""
         if history:
@@ -143,11 +194,21 @@ class AgentFactory:
             return input_data
         return message
     
-    async def chat(self, message: str, agent_key: str, history: list[dict] = None) -> str:
-        """Send message to an agent (non-streaming)."""
-        agent = self._agents.get(agent_key)
-        if not agent:
-            raise ValueError(f"Unknown agent: {agent_key}")
+    async def chat(self, message: str, agent_key: str, history: list[dict] = None, user_id: str = None) -> str:
+        """Send message to an agent (non-streaming).
+        
+        Args:
+            message: User message
+            agent_key: Which agent to use
+            history: Conversation history
+            user_id: Optional user ID for memory-enabled agents
+        """
+        if user_id:
+            agent = await self._get_agent_for_user(agent_key, user_id)
+        else:
+            agent = self._agents.get(agent_key)
+            if not agent:
+                raise ValueError(f"Unknown agent: {agent_key}")
         
         input_data = self._build_input(message, agent_key, history)
         
@@ -158,11 +219,21 @@ class AgentFactory:
         )
         return response.output_text or ""
     
-    async def chat_stream(self, message: str, agent_key: str, history: list[dict] = None):
-        """Stream response from an agent. Yields text chunks."""
-        agent = self._agents.get(agent_key)
-        if not agent:
-            raise ValueError(f"Unknown agent: {agent_key}")
+    async def chat_stream(self, message: str, agent_key: str, history: list[dict] = None, user_id: str = None):
+        """Stream response from an agent. Yields text chunks.
+        
+        Args:
+            message: User message
+            agent_key: Which agent to use
+            history: Conversation history
+            user_id: Optional user ID for memory-enabled agents
+        """
+        if user_id:
+            agent = await self._get_agent_for_user(agent_key, user_id)
+        else:
+            agent = self._agents.get(agent_key)
+            if not agent:
+                raise ValueError(f"Unknown agent: {agent_key}")
         
         input_data = self._build_input(message, agent_key, history)
         

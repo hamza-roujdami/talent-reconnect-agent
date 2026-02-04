@@ -87,8 +87,9 @@ async def stream_chat(
             await store.add_message(session_id, "assistant", direct_response, agent=agent_key)
         else:
             # Stream response from the routed agent
+            # Pass session_id as user_id for memory-enabled agents
             full_response = ""
-            async for chunk in factory.chat_stream(message, agent_key, history=history or None):
+            async for chunk in factory.chat_stream(message, agent_key, history=history or None, user_id=session_id):
                 if chunk:
                     yield sse_event("text", {"content": chunk})
                     full_response += chunk

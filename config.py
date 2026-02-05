@@ -16,10 +16,12 @@ class Config:
     model_primary: str = os.environ.get("FOUNDRY_MODEL_PRIMARY", "gpt-4o-mini")
     embedding_model: str = os.environ.get("FOUNDRY_EMBEDDING_MODEL", "text-embedding-3-small")
     
-    # Azure AI Search (via Foundry connection)
-    search_connection_name: str = os.environ.get("AZURE_AI_SEARCH_CONNECTION_NAME", "")
-    resume_index: str = os.environ.get("SEARCH_RESUME_INDEX", "resumes")
-    feedback_index: str = os.environ.get("SEARCH_FEEDBACK_INDEX", "feedback")
+    # Foundry IQ Knowledge Bases
+    search_endpoint: str = os.environ.get("AZURE_SEARCH_ENDPOINT", "")
+    resumes_kb_name: str = os.environ.get("RESUMES_KB_NAME", "resumes-kb")
+    feedback_kb_name: str = os.environ.get("FEEDBACK_KB_NAME", "feedback-kb")
+    resumes_kb_connection: str = os.environ.get("RESUMES_KB_CONNECTION", "resumes-kb-mcp")
+    feedback_kb_connection: str = os.environ.get("FEEDBACK_KB_CONNECTION", "feedback-kb-mcp")
     
     # Memory (long-term cross-session)
     enable_memory: bool = os.environ.get("ENABLE_MEMORY", "true").lower() == "true"
@@ -35,8 +37,8 @@ class Config:
         if not self.project_endpoint:
             missing.append("PROJECT_ENDPOINT")
         
-        if not self.search_connection_name:
-            missing.append("AZURE_AI_SEARCH_CONNECTION_NAME")
+        if not self.search_endpoint:
+            missing.append("AZURE_SEARCH_ENDPOINT")
         
         return missing
 

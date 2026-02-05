@@ -1,6 +1,6 @@
 # Azure AI Search Setup
 
-Scripts to create and populate the Azure AI Search indexes used by the recruiting agents.
+Scripts to create and populate the Azure AI Search indexes and Foundry IQ Knowledge Bases.
 
 ## Prerequisites
 
@@ -28,6 +28,13 @@ python data/03-create-feedback-index.py
 
 # 4. Generate and upload interview feedback
 python data/04-push-feedback-data.py
+
+# 5. Create Foundry IQ Knowledge Sources and Bases
+pip install azure-search-documents==11.7.0b2
+python data/09-create-knowledge-bases.py
+
+# 6. Create MCP connections in Foundry (requires PROJECT_RESOURCE_ID)
+python data/10-create-mcp-connections.py
 ```
 
 ## Scripts
@@ -38,6 +45,8 @@ python data/04-push-feedback-data.py
 | `02-push-data.py` | Generates synthetic resumes using Faker |
 | `03-create-feedback-index.py` | Creates `feedback` index linked to resumes via `candidate_id` |
 | `04-push-feedback-data.py` | Generates interview feedback for existing candidates |
+| `09-create-knowledge-bases.py` | Creates Foundry IQ knowledge sources and bases |
+| `10-create-mcp-connections.py` | Creates MCP project connections for agent access |
 
 ## Options
 
@@ -49,10 +58,22 @@ python data/02-push-data.py --count 100 --dry-run
 python data/04-push-feedback-data.py --total-feedback 5000 --dry-run
 ```
 
+## Configuration
+
+Set these in your `.env` for Foundry IQ:
+
+```bash
+AZURE_SEARCH_ENDPOINT=https://your-search.search.windows.net
+RESUMES_KB_NAME=resumes-kb
+FEEDBACK_KB_NAME=feedback-kb
+RESUMES_KB_CONNECTION=resumes-kb-mcp
+FEEDBACK_KB_CONNECTION=feedback-kb-mcp
+```
+
 ## Index Configuration
 
 Both indexes use Microsoft's built-in semantic ranker (no vector embeddings needed):
 
-- **Semantic config**: `default` (required by built-in `AzureAISearchAgentTool`)
+- **Semantic config**: `default`
 - **Source URL**: `source_url` field for citations
 - **Query type**: `SEMANTIC` for intelligent ranking

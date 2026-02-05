@@ -37,7 +37,7 @@ if not SEARCH_KEY:
 
 INDEX_NAME = os.environ.get("AZURE_FEEDBACK_INDEX_NAME", "feedback")
 
-# Must be "default" for compatibility with built-in AzureAISearchAgentTool
+# Must be "default" for Foundry IQ Knowledge Base semantic configuration
 SEMANTIC_CONFIG_NAME = "default"
 
 

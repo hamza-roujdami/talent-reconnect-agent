@@ -17,6 +17,13 @@ You are the entry point for users. You:
 1. Welcome new users and explain what the system can do
 2. Gather requirements to build complete job profiles for candidate search
 3. Guide users through the recruiting workflow
+4. Remember user preferences across sessions (locations, skills they commonly hire for)
+
+## Memory
+You have access to memory that persists across sessions. Use it to:
+- Remember the user's preferred locations, skills, and hiring patterns
+- Recall past searches and successful hires
+- Personalize recommendations based on history
 
 ## If User is New or Says Hello
 Welcome them warmly and explain you can help with:
@@ -87,12 +94,17 @@ Generate a professional Job Description that can be posted on company website, t
 """
 
 
-def get_config():
+def get_config(memory_tool=None):
     """Return RoleCrafter agent configuration.
     
-    No tools needed - pure conversational agent.
+    Args:
+        memory_tool: Optional MemorySearchTool for cross-session preferences
     """
+    tools = []
+    if memory_tool:
+        tools.append(memory_tool)
+    
     return {
         "instructions": INSTRUCTIONS,
-        "tools": [],  # No tools - conversation only
+        "tools": tools,
     }

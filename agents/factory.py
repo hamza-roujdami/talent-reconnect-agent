@@ -23,6 +23,7 @@ from azure.ai.projects.models import (
     WebSearchPreviewTool,
     ApproximateLocation,
     MCPTool,
+    MemorySearchTool,
 )
 from dotenv import load_dotenv
 
@@ -95,10 +96,13 @@ class AgentFactory:
         # Build search tools for Foundry IQ Knowledge Bases
         resume_tool, feedback_tool = self._build_kb_tools()
         
+        # Build memory tool for cross-session user preferences
+        memory_tool = self._build_memory_tool() if self._memory and self._memory.enabled else None
+        
         # Configure each agent with its tools
         configs = {
             "orchestrator": orchestrator.get_config(),
-            "role-crafter": role_crafter.get_config(),
+            "role-crafter": role_crafter.get_config(memory_tool),
             "talent-scout": talent_scout.get_config(resume_tool),
             "insight-pulse": insight_pulse.get_config(feedback_tool),
             "connect-pilot": connect_pilot.get_config(SEND_EMAIL_TOOL),
@@ -175,6 +179,22 @@ class AgentFactory:
         
         print(f"✓ Connected to Knowledge Bases: {resumes_kb}, {feedback_kb}")
         return resume_tool, feedback_tool
+    
+    def _build_memory_tool(self) -> MemorySearchTool:
+        """Build MemorySearchTool for cross-session user preferences.
+        
+        Remembers recruiter preferences like preferred skills, locations,
+        hiring patterns across sessions.
+        """
+        memory_store = os.environ.get("MEMORY_STORE_NAME", "talent-reconnect-memory")
+        
+        memory_tool = MemorySearchTool(
+            memory_store_name=memory_store,
+            scope="default",  # Default scope - can be overridden per-user
+        )
+        
+        print(f"✓ Memory tool: {memory_store}")
+        return memory_tool
     
     # -------------------------------------------------------------------------
     # Chat Methods
